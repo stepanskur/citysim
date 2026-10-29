@@ -1,0 +1,24 @@
+{
+  "name": "citysim",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "test:routes": "tsx tests/routes.test.ts",
+    "test:engage": "tsx tests/engage.test.ts"
+  },
+  "dependencies": {
+    "@types/three": "^0.186.0",
+    "playwright": "^1.64.1",
+    "three": "^0.186.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}

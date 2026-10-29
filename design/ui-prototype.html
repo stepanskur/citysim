@@ -1,0 +1,125 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>CitySim v2 — интерфейс</title><link rel="stylesheet" href="ui.css">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0d1020}
+.world{position:fixed;inset:0;background:url(shots/v2-models-street.png) center/cover}
+.world::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 45%,transparent 55%,rgba(13,16,32,.55)),linear-gradient(180deg,rgba(13,16,32,.35),transparent 18%,transparent 80%,rgba(13,16,32,.45))}
+.top{position:fixed;left:16px;right:16px;top:16px;display:flex;gap:12px;align-items:stretch;z-index:10}
+.brand{display:flex;align-items:center;gap:12px;padding:0 18px 0 12px;height:56px}
+.crest{width:34px;height:34px;border-radius:11px;background:conic-gradient(from 200deg,#ff7a59,#ffc145,#5fe0c8,#7aaaff,#ff7a59);display:grid;place-items:center;font:800 14px var(--display);color:#141629;box-shadow:inset 0 0 0 3px rgba(255,255,255,.35)}
+.brand b{display:block;font:800 16px/1.1 var(--display)} .brand small{color:var(--text-mute);font-size:11px}
+.stats{display:flex;align-items:center;height:56px;padding:0 6px}
+.stat{display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 16px;height:36px;border-left:1px solid var(--stroke)} .stat:first-child{border:0}
+.stat .cs-value{font-size:18px;display:flex;align-items:center;gap:8px}
+.money{color:var(--money)}
+.rci{display:flex;gap:4px;align-items:flex-end;height:20px}.rci i{width:7px;border-radius:3px}
+.sp{flex:1}
+.clock{display:flex;align-items:center;gap:10px;height:56px;padding:0 8px 0 18px}
+.clock .d{font:700 14px var(--display)} .clock small{display:block;color:var(--text-mute);font-size:11px}
+.left{position:fixed;left:16px;top:88px;width:360px;z-index:20}
+.right{position:fixed;right:16px;top:88px;width:340px;display:flex;flex-direction:column;gap:10px;z-index:60}
+.dockw{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:30}
+.legend{position:fixed;right:16px;bottom:20px;width:300px;padding:14px 16px;z-index:20}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 12px}
+.kpi{padding:12px;border-radius:14px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--stroke)}
+.kpi .cs-value{font-size:22px;margin-top:6px}
+.chartbox{position:relative;margin:0 -4px 8px}
+.hoverline{position:absolute;top:8px;bottom:22px;left:72%;width:1px;background:rgba(255,255,255,.35)}
+.hovertip{position:absolute;left:calc(72% + 8px);top:4px;padding:6px 9px;border-radius:9px;background:rgba(10,12,26,.9);font-size:11px;line-height:1.5;box-shadow:var(--sh-pop)}
+.tip{left:50%;bottom:104px;transform:translateX(-50%)}
+.ln{display:flex;align-items:center;gap:10px}
+.ln .meta{display:flex;flex-direction:column}.ln small{color:var(--text-mute);font-size:11px}
+.load{width:64px}
+</style></head><body class="cs-root"><svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-road" viewBox="0 0 24 24"><path d="M9 3 6 21M15 3l3 18M12 5v2M12 11v2M12 17v2"/></symbol>
+<symbol id="i-zone" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 16V8h5a2.5 2.5 0 0 1 0 5H8M12.5 13l3 3"/></symbol>
+<symbol id="i-build" viewBox="0 0 24 24"><path d="M4 20h16M6 20V10l6-5 6 5v10M10 20v-5h4v5"/></symbol>
+<symbol id="i-bus" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="15" rx="4"/><path d="M5 11h14M8.5 21v-3M15.5 21v-3M8.5 14.5h.01M15.5 14.5h.01"/></symbol>
+<symbol id="i-tram" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="4"/><path d="M9 2.5h6M12 2.5V6M8.5 21.5l2-3.5M15.5 21.5l-2-3.5M6 12h12"/></symbol>
+<symbol id="i-rail" viewBox="0 0 24 24"><path d="M8 3 6 21M16 3l2 18M7 7h10M6.5 12h11M6 17h12"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 13l9 5 9-5"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15l3.5-4 3 2.5L20 7"/></symbol>
+<symbol id="i-bulldoze" viewBox="0 0 24 24"><path d="M3 16h11l2-6H8L6.5 6H3v10ZM16 12l5 5"/><circle cx="6" cy="18.5" r="1.5"/><circle cx="12" cy="18.5" r="1.5"/></symbol>
+<symbol id="i-pop" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M16 5a3 3 0 0 1 0 6M20.5 20a5.5 5.5 0 0 0-3-4.9"/></symbol>
+<symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M10 7.5h3a2.5 2.5 0 0 1 0 5h-3V17M8.5 14.5h5"/></symbol>
+<symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/></symbol>
+<symbol id="i-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16ZM10 20.5a2 2 0 0 0 4 0"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5-10-6.5Z"/></symbol>
+<symbol id="i-ff" viewBox="0 0 24 24"><path d="M4 6v12l7.5-6L4 6ZM12.5 6v12l7.5-6-7.5-6Z"/></symbol>
+<symbol id="i-dice" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 9h.01M15 15h.01M15 9h.01M9 15h.01M12 12h.01"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19L12 4ZM12 10v4M12 17h.01"/></symbol>
+<symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+</defs></svg>
+
+<div class="world"></div>
+<div class="top">
+  <div class="cs-glass brand cs-enter"><div class="crest">Н</div><div><b>Новоречинск</b><small>Город · seed 48213</small></div></div>
+  <div class="cs-glass stats cs-enter" style="animation-delay:40ms">
+    <div class="stat"><span class="cs-label">Бюджет</span><span class="cs-value money">₽ 12,48 млн <span class="cs-delta cs-delta--up">▲ 184 тыс/мес</span></span></div>
+    <div class="stat"><span class="cs-label">Население</span><span class="cs-value">118 452</span></div>
+    <div class="stat"><span class="cs-label">Довольство</span><span class="cs-value" style="color:var(--pos)">78%</span></div>
+    <div class="stat"><span class="cs-label">Спрос</span><div class="rci"><i style="height:20px;background:var(--res)"></i><i style="height:11px;background:var(--com)"></i><i style="height:5px;background:var(--ind)"></i></div></div>
+  </div>
+  <div class="sp"></div>
+  <div class="cs-glass clock cs-enter" style="animation-delay:80ms"><div><span class="d">14 мая 2031</span><small>Чт · 18:40</small></div>
+    <div class="cs-seg"><button><svg class="cs-ico"><use href="#i-pause"/></svg></button><button aria-pressed="true"><svg class="cs-ico"><use href="#i-play"/></svg></button><button><svg class="cs-ico"><use href="#i-ff"/></svg></button></div>
+    <button class="cs-btn cs-btn--icon" style="background:transparent;border:0"><svg class="cs-ico"><use href="#i-bell"/></svg></button><button class="cs-btn cs-btn--icon" style="background:transparent;border:0"><svg class="cs-ico"><use href="#i-cog"/></svg></button></div>
+</div>
+
+<div class="cs-glass left cs-enter" style="animation-delay:120ms">
+  <div class="cs-panel__head"><svg class="cs-ico"><use href="#i-coin"/></svg>Экономика<span class="sp"></span><div class="cs-seg"><button aria-pressed="true">Месяц</button><button>Год</button></div></div>
+  <div class="cs-panel__body">
+    <div class="kpis"><div class="kpi"><span class="cs-label">Доходы</span><div class="cs-value cs-num">2,91 млн</div></div><div class="kpi"><span class="cs-label">Расходы</span><div class="cs-value cs-num">2,73 млн</div></div></div>
+    <div class="chartbox">
+    <svg class="cs-chart" viewBox="0 0 330 130" width="100%">
+      <defs><linearGradient id="gi" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fe0c8" stop-opacity=".45"/><stop offset="1" stop-color="#5fe0c8" stop-opacity="0"/></linearGradient></defs>
+      <g stroke="rgba(255,255,255,.06)"><line x1="0" y1="20" x2="330" y2="20"/><line x1="0" y1="55" x2="330" y2="55"/><line x1="0" y1="90" x2="330" y2="90"/></g>
+      <path d="M0 92 C 30 88, 50 80, 82 76 S 135 70, 165 60 S 220 52, 248 44 S 300 30, 330 24 V108 H0Z" fill="url(#gi)"/>
+      <path d="M0 92 C 30 88, 50 80, 82 76 S 135 70, 165 60 S 220 52, 248 44 S 300 30, 330 24" fill="none" stroke="#5fe0c8" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M0 98 C 30 95, 55 90, 82 86 S 135 80, 165 74 S 220 66, 248 62 S 300 50, 330 46" fill="none" stroke="#ff7a6a" stroke-width="2" stroke-dasharray="1 0" stroke-linecap="round" opacity=".9"/>
+      <circle cx="238" cy="46" r="4.5" fill="#0d1020" stroke="#5fe0c8" stroke-width="2.5"/><circle cx="238" cy="63" r="4" fill="#0d1020" stroke="#ff7a6a" stroke-width="2"/>
+      <g><text x="0" y="126">июн</text><text x="80" y="126">авг</text><text x="160" y="126">окт</text><text x="240" y="126">дек</text><text x="305" y="126">фев</text></g>
+    </svg><div class="hoverline"></div><div class="hovertip cs-num"><b>Декабрь</b><br><span style="color:var(--accent)">●</span> 2,84 млн &nbsp;<span style="color:var(--neg)">●</span> 2,61 млн</div></div>
+    <div class="cs-list cs-num">
+      <div class="cs-row"><i class="cs-dot" style="background:var(--res)"></i>Жилые налоги<span class="n">1 204 000</span><span class="cs-delta cs-delta--up">+3%</span></div>
+      <div class="cs-row"><i class="cs-dot" style="background:var(--com)"></i>Коммерция<span class="n">842 000</span><span class="cs-delta cs-delta--up">+1%</span></div>
+      <div class="cs-row"><i class="cs-dot" style="background:var(--ind)"></i>Промышленность<span class="n">516 000</span><span class="cs-delta cs-delta--down">−2%</span></div>
+      <div class="cs-row"><i class="cs-dot" style="background:var(--transit)"></i>Транспорт<span class="n">352 000</span><span class="cs-delta cs-delta--up">+8%</span></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin:14px 0 8px"><span style="color:var(--text-dim)">Налог на жильё</span><b class="cs-num">11%</b></div>
+    <div class="cs-slider"><i style="width:44%"></i><b style="left:44%"></b></div>
+  </div>
+</div>
+
+<div class="right">
+  <div class="cs-glass cs-toast"><div class="cs-toast__icon" style="background:rgba(255,193,69,.16);color:var(--warn)"><svg class="cs-ico"><use href="#i-alert"/></svg></div><div><div class="cs-toast__title">Линия <span class="cs-badge" style="background:var(--bus)">12</span> перегружена</div><div class="cs-toast__text">Загрузка 118%. Добавьте 2 автобуса.</div></div><span class="cs-toast__time">сейчас</span></div>
+  <div class="cs-glass cs-toast" style="animation-delay:120ms"><div class="cs-toast__icon" style="background:rgba(95,224,200,.16);color:var(--accent)"><svg class="cs-ico"><use href="#i-sparkle"/></svg></div><div><div class="cs-toast__title">100 000 жителей</div><div class="cs-toast__text">Открыт трамвай. Город получил статус.</div></div><span class="cs-toast__time">2 мин</span></div>
+  <div class="cs-glass cs-enter" style="animation-delay:200ms"><div class="cs-panel__head"><svg class="cs-ico"><use href="#i-tram"/></svg>Транспорт<span class="sp"></span><button class="cs-btn" style="height:28px;font-size:12px">+ Линия</button></div><div class="cs-panel__body"><div class="cs-list cs-num">
+    <div class="cs-row ln"><span class="cs-badge" style="background:var(--bus)">12</span><div class="meta">Вокзал — Заречье<small>8 автобусов · 41 тыс/мес</small></div><span class="n" style="color:var(--neg)">118%</span></div>
+    <div class="cs-row ln"><span class="cs-badge" style="background:var(--tram)">Т1</span><div class="meta">Кольцевая<small>5 трамваев · 64 тыс/мес</small></div><span class="n" style="color:var(--pos)">74%</span></div>
+    <div class="cs-row ln"><span class="cs-badge" style="background:var(--rail)">Э</span><div class="meta">Пригородная<small>2 поезда · 18 тыс/мес</small></div><span class="n">52%</span></div>
+  </div></div></div>
+</div>
+
+<div class="cs-tooltip tip"><b>Проспект</b><span style="color:var(--text-dim)">4 полосы · ₽ 4 200 / 16 м</span><span class="cs-kbd">R</span></div>
+<div class="dockw"><div class="cs-glass cs-dock">
+  <button class="cs-tool" aria-pressed="true" title="Дороги (R)"><svg class="cs-ico"><use href="#i-road"/></svg></button>
+  <button class="cs-tool" title="Зоны (Z)"><svg class="cs-ico"><use href="#i-zone"/></svg></button>
+  <button class="cs-tool" title="Здания (B)"><svg class="cs-ico"><use href="#i-build"/></svg></button>
+  <div class="cs-sep"></div>
+  <button class="cs-tool" title="Автобус (T)"><svg class="cs-ico"><use href="#i-bus"/></svg></button>
+  <button class="cs-tool" title="Трамвай (Y)"><svg class="cs-ico"><use href="#i-tram"/></svg></button>
+  <button class="cs-tool" title="Ж/Д (U)"><svg class="cs-ico"><use href="#i-rail"/></svg></button>
+  <div class="cs-sep"></div>
+  <button class="cs-tool" title="Слои (H)"><svg class="cs-ico"><use href="#i-layers"/></svg></button>
+  <button class="cs-tool" title="Аналитика (G)"><svg class="cs-ico"><use href="#i-chart"/></svg></button>
+  <button class="cs-tool cs-tool--danger" title="Снос (X)"><svg class="cs-ico"><use href="#i-bulldoze"/></svg></button>
+</div></div>
+<div class="cs-glass legend cs-enter" style="animation-delay:260ms"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><svg class="cs-ico" style="color:var(--accent)"><use href="#i-layers"/></svg><b style="font:700 14px var(--display)">Трафик</b><span class="sp"></span><span class="cs-kbd">H</span></div>
+<div class="cs-legend__ramp" style="background:linear-gradient(90deg,#3fc28a,#b6e05a,#ffd24a,#ff8a4c,#e8404a)"></div><div class="cs-legend__ticks"><span>Свободно</span><span>Плотно</span><span>Пробка</span></div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px"><span class="cs-chip cs-chip--on">Трафик</span><span class="cs-chip">Земля</span><span class="cs-chip">Шум</span><span class="cs-chip">Экология</span><span class="cs-chip">Охват ОТ</span></div></div>
+</body></html>

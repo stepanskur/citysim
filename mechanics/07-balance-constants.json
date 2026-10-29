@@ -1,0 +1,517 @@
+{
+  "time": {
+    "tickGameMinutes": 1,
+    "tickRealMsAtX1": 200,
+    "ticksPerDay": 1440,
+    "daysPerMonth": 30,
+    "monthsPerYear": 12,
+    "speeds": [
+      0,
+      1,
+      3,
+      10
+    ],
+    "economyEveryTicks": 60,
+    "assignmentEveryTicks": 360,
+    "growthEveryTicks": 1440
+  },
+  "population": {
+    "residentsPerResLevel": 40,
+    "jobsPerComLevel": 25,
+    "jobsPerIndLevel": 35,
+    "jobsPerExtractLevel": 15,
+    "jobsPerWarehouseLevel": 10,
+    "workforceShare": 0.55,
+    "naturalUnemployment": 0.04,
+    "incomeClassShares": [
+      0.4,
+      0.45,
+      0.15
+    ],
+    "wagePerMonth": [
+      30000,
+      60000,
+      140000
+    ]
+  },
+  "needs": {
+    "goodsPerResidentMonth": [
+      0.15,
+      0.22,
+      0.35
+    ],
+    "consumptionMix": {
+      "food": 0.45,
+      "consumer": 0.25,
+      "furniture": 0.1,
+      "fuel": 0.2
+    },
+    "housingSpendShare": 0.3,
+    "transportSpendShare": 0.12,
+    "valueOfTimePerHour": [
+      150,
+      350,
+      900
+    ],
+    "happinessWeights": {
+      "housing": 0.18,
+      "jobs": 0.2,
+      "goods": 0.14,
+      "transport": 0.18,
+      "services": 0.12,
+      "environment": 0.08,
+      "taxes": 0.1
+    }
+  },
+  "goods": {
+    "types": {
+      "wood": {
+        "name": "Древесина",
+        "basePrice": 400,
+        "tonsPerUnit": 1,
+        "shelfDays": 0,
+        "source": "extract"
+      },
+      "ore": {
+        "name": "Руда",
+        "basePrice": 500,
+        "tonsPerUnit": 1,
+        "shelfDays": 0,
+        "source": "extract"
+      },
+      "grain": {
+        "name": "Зерно",
+        "basePrice": 300,
+        "tonsPerUnit": 1,
+        "shelfDays": 120,
+        "source": "extract"
+      },
+      "oil": {
+        "name": "Нефть",
+        "basePrice": 700,
+        "tonsPerUnit": 1,
+        "shelfDays": 0,
+        "source": "extract"
+      },
+      "food": {
+        "name": "Продукты",
+        "basePrice": 900,
+        "tonsPerUnit": 0.5,
+        "shelfDays": 20,
+        "source": "ind"
+      },
+      "metal": {
+        "name": "Металл",
+        "basePrice": 1500,
+        "tonsPerUnit": 1,
+        "shelfDays": 0,
+        "source": "ind"
+      },
+      "fuel": {
+        "name": "Топливо",
+        "basePrice": 1600,
+        "tonsPerUnit": 1,
+        "shelfDays": 0,
+        "source": "ind"
+      },
+      "furniture": {
+        "name": "Мебель",
+        "basePrice": 1800,
+        "tonsPerUnit": 0.6,
+        "shelfDays": 0,
+        "source": "ind"
+      },
+      "consumer": {
+        "name": "Потребтовары",
+        "basePrice": 2500,
+        "tonsPerUnit": 0.3,
+        "shelfDays": 0,
+        "source": "ind"
+      }
+    },
+    "recipes": {
+      "food": {
+        "out": "food",
+        "outPerLevelDay": 2,
+        "inputs": {
+          "grain": 3
+        }
+      },
+      "metal": {
+        "out": "metal",
+        "outPerLevelDay": 1,
+        "inputs": {
+          "ore": 2
+        }
+      },
+      "fuel": {
+        "out": "fuel",
+        "outPerLevelDay": 1,
+        "inputs": {
+          "oil": 1.5
+        }
+      },
+      "furniture": {
+        "out": "furniture",
+        "outPerLevelDay": 1,
+        "inputs": {
+          "wood": 2
+        }
+      },
+      "consumer": {
+        "out": "consumer",
+        "outPerLevelDay": 1,
+        "inputs": {
+          "metal": 0.5,
+          "fuel": 0.3
+        }
+      }
+    },
+    "extraction": {
+      "FOREST": {
+        "good": "wood",
+        "perLevelDay": 3
+      },
+      "ORE": {
+        "good": "ore",
+        "perLevelDay": 2.5
+      },
+      "FERTILE": {
+        "good": "grain",
+        "perLevelDay": 4
+      },
+      "OIL": {
+        "good": "oil",
+        "perLevelDay": 2
+      }
+    },
+    "warehouseCapacityPerLevel": 400,
+    "retailTargetStockDays": 5,
+    "truckTons": 12,
+    "railWagonTons": 60,
+    "railWagonsPerTrain": 20
+  },
+  "prices": {
+    "elasticity": 0.6,
+    "minMult": 0.4,
+    "maxMult": 3,
+    "smoothing": 0.1,
+    "retailMarkup": 0.35,
+    "exportMult": 0.85,
+    "importMult": 1.3
+  },
+  "budget": {
+    "startMoney": [
+      300000,
+      1500000,
+      8000000,
+      40000000,
+      150000000
+    ],
+    "defaultTax": {
+      "res": 0.1,
+      "com": 0.12,
+      "ind": 0.12
+    },
+    "taxMin": 0,
+    "taxMax": 0.3,
+    "taxNeutral": 0.1,
+    "propertyTaxYear": 0.01,
+    "resTaxBaseShare": 0.02,
+    "profitShare": 0.25,
+    "servicesUpkeepPer1000": 40000,
+    "roadUpkeepMult": 10
+  },
+  "loans": {
+    "offers": [
+      {
+        "amount": 500000,
+        "annualRate": 0.06,
+        "months": 24
+      },
+      {
+        "amount": 5000000,
+        "annualRate": 0.08,
+        "months": 60
+      },
+      {
+        "amount": 50000000,
+        "annualRate": 0.1,
+        "months": 120
+      }
+    ],
+    "maxDebtToMonthlyIncome": 24,
+    "overdraftRatePenalty": 0.005,
+    "bankruptcyWarnMonths": 3
+  },
+  "trade": {
+    "costPerTonKm": {
+      "truck": 6,
+      "rail": 2,
+      "ship": 1
+    },
+    "interCityTariff": 0.03,
+    "minMargin": 0.05
+  },
+  "growth": {
+    "baseDailyRate": 0.004,
+    "resWeights": {
+      "jobs": 0.3,
+      "housingVacancy": 0.15,
+      "goods": 0.1,
+      "access": 0.15,
+      "congestion": 0.1,
+      "tax": 0.1,
+      "attractiveness": 0.1
+    },
+    "comWeights": {
+      "customers": 0.4,
+      "goods": 0.2,
+      "access": 0.2,
+      "tax": 0.1,
+      "workers": 0.1
+    },
+    "indWeights": {
+      "workers": 0.3,
+      "freightAccess": 0.25,
+      "inputs": 0.2,
+      "exportPrice": 0.15,
+      "tax": 0.1
+    },
+    "demandSmoothing": 0.15,
+    "deadband": 0.05,
+    "maxUpgradesPer1000": 2,
+    "sizeDampP0": 2000000,
+    "sizeDampGamma": 0.3,
+    "decayDailyMax": 0.002,
+    "cellSize": 256,
+    "hysteresisDays": 3
+  },
+  "transport": {
+    "modes": {
+      "walk": {
+        "speed": 1.3,
+        "fixedCost": 0,
+        "costPerKm": 0,
+        "asc": 0,
+        "maxKm": 2.5
+      },
+      "bike": {
+        "speed": 4.5,
+        "fixedCost": 0,
+        "costPerKm": 0,
+        "asc": 6,
+        "maxKm": 8
+      },
+      "car": {
+        "speed": 13,
+        "fixedCost": 30,
+        "costPerKm": 12,
+        "asc": 0,
+        "maxKm": 999
+      },
+      "bus": {
+        "speed": 9,
+        "fixedCost": 0,
+        "costPerKm": 0,
+        "asc": 4,
+        "maxKm": 40
+      },
+      "tram": {
+        "speed": 11,
+        "fixedCost": 0,
+        "costPerKm": 0,
+        "asc": 2,
+        "maxKm": 40
+      },
+      "metro": {
+        "speed": 20,
+        "fixedCost": 0,
+        "costPerKm": 0,
+        "asc": -2,
+        "maxKm": 80
+      },
+      "rail": {
+        "speed": 30,
+        "fixedCost": 0,
+        "costPerKm": 2,
+        "asc": 0,
+        "maxKm": 400
+      }
+    },
+    "logitTheta": 0.12,
+    "waitWeight": 2,
+    "walkWeight": 1.8,
+    "transferPenaltyMin": 5,
+    "bprAlpha": 0.15,
+    "bprBeta": 4,
+    "laneCapacityPerHour": [
+      700,
+      1600,
+      2000,
+      400
+    ],
+    "peakHourShare": 0.1,
+    "tripsPerResidentDay": 2.4,
+    "tripPurposeShares": {
+      "work": 0.45,
+      "shop": 0.3,
+      "leisure": 0.25
+    },
+    "carOccupancy": 1.3,
+    "msaIterations": 4,
+    "maxVisibleCars": 4000,
+    "tripsPerAgentMin": 1,
+    "defaultFare": [
+      40,
+      45,
+      55,
+      120
+    ],
+    "headwayMinMin": 2,
+    "headwayMaxMin": 30,
+    "crowdingPenaltyPerLoad": 0.5,
+    "parkingCostMax": 200
+  },
+  "reputation": {
+    "start": 50,
+    "monthlyScale": 4,
+    "unlockThresholds": {
+      "tram": 40,
+      "metro": 55,
+      "rail": 50,
+      "port": 45,
+      "loanLarge": 60,
+      "landmark": 70,
+      "cityPartnership": 65
+    }
+  },
+  "expansion": {
+    "subregionSize": 4096,
+    "baseLandPrice": 2000000,
+    "resourceTilePrice": 150,
+    "ownedCountMult": 1.35,
+    "popGateBase": 20000,
+    "popGateGrowth": 1.5,
+    "tenderDays": 30,
+    "minBidStep": 0.05,
+    "tenderWeights": {
+      "price": 0.5,
+      "plan": 0.2,
+      "reputation": 0.2,
+      "adjacency": 0.1
+    },
+    "firstRefusalDays": 15,
+    "sharedResourceQuotaPenalty": 0.5,
+    "aiSaveShare": 0.15,
+    "aiDecisionDays": 30,
+    "frontierDemandBonus": 0.05,
+    "sharedInfraCostShare": 0.5
+  },
+  "routes": {
+    "defaultTermMonths": 24,
+    "minTermMonths": 6,
+    "maxTermMonths": 120,
+    "defaultTollPerVehKm": 15,
+    "defaultTollPerTonKm": 0.5,
+    "defaultRevenueShare": 0.05,
+    "withdrawNoticeDays": 60,
+    "withdrawPenaltyShare": 0.25,
+    "responseTimeoutDays": 15,
+    "offlineTimeoutDays": 30,
+    "aiResponseDays": 3,
+    "offlineProxyRealHours": 48,
+    "maxCounterOffers": 3,
+    "disputeDays": 30,
+    "vehicleLifeYears": 15,
+    "trackLifeYears": 40,
+    "aiScoring": {
+      "benefit": 0.45,
+      "risk": 0.2,
+      "relation": 0.2,
+      "strategic": 0.15,
+      "acceptThreshold": 0.55,
+      "counterBand": 0.15
+    },
+    "aiProfiles": {
+      "cooperative": {
+        "thresholdShift": -0.1,
+        "tollMult": 0.8
+      },
+      "mercantile": {
+        "thresholdShift": 0,
+        "tollMult": 1.3
+      },
+      "cautious": {
+        "thresholdShift": 0.1,
+        "tollMult": 1
+      },
+      "protectionist": {
+        "thresholdShift": 0.2,
+        "tollMult": 1.5
+      }
+    },
+    "relationOnApprove": 3,
+    "relationOnWithdraw": -15,
+    "relationOnDispute": -5
+  },
+  "engagement": {
+    "floatTextMaxOnScreen": 24,
+    "floatTextTtlSec": 1.5,
+    "alertCooldownDays": 3,
+    "feedMaxPerDay": 8,
+    "autoPauseOnCritical": true,
+    "onboardingGoalRewards": [
+      50000,
+      50000,
+      100000,
+      100000,
+      200000
+    ],
+    "onboardingRewardMinScale": 0.1,
+    "maxActiveQuests": 3,
+    "eventDailyChance": 0.08,
+    "eventMinGapDays": 10,
+    "eventDecisionDays": 3,
+    "contractPremium": 1.25,
+    "contractPenaltyShare": 0.2,
+    "contractRelationOk": 3,
+    "contractRelationFail": -5,
+    "rpPerMillionIncome": 1,
+    "rpPer100kPop": 2,
+    "advisorCooldownDays": 5,
+    "advisorSnoozeDays": 30,
+    "stressHigh": 0.7,
+    "stressLow": 0.25,
+    "dynMinMult": 0.5,
+    "dynMaxMult": 1.5,
+    "difficulty": {
+      "relaxed": {
+        "moneyMult": 2,
+        "eventMult": 0.5,
+        "bankruptcyMonths": 0,
+        "aiThresholdShift": -0.15
+      },
+      "normal": {
+        "moneyMult": 1,
+        "eventMult": 1,
+        "bankruptcyMonths": 3,
+        "aiThresholdShift": 0
+      },
+      "hard": {
+        "moneyMult": 0.6,
+        "eventMult": 1.5,
+        "bankruptcyMonths": 2,
+        "aiThresholdShift": 0.1
+      }
+    },
+    "seasonLengthDays": 28
+  },
+  "alerts": {
+    "congestionVC": 0.9,
+    "goodsShortage": 0.15,
+    "unemployment": 0.1,
+    "transitOverload": 1.1,
+    "cashMonthsWarn": 2
+  }
+}
