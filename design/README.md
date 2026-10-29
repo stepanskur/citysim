@@ -2,6 +2,7 @@
 | Файл | Что |
 |---|---|
 | CONCEPT.md | Полная концепция игры: идентичность, арт, звук, цикл, прогрессия, экономика, сценарии, онбординг, UX, **реалистичная генерация** |
+| FIX_VISUALS.md (+ ground-material.ts, road-kit.ts, traffic-signals.ts, fix-preview.html) | Исправления по QA: светофоры, земля, перекрёстки — числа и задачи для src/ |
 | GENERATION_PROPOSALS.md | Приоритизированные изменения src/gen и src/world с псевдокодом и параметрами |
 | gen-prototypes/ | Автономный прототип плана города → out/cityplan.png (`npx tsx design/gen-prototypes/cityplan.ts <seed>`) |
 | STYLE_GUIDE.md | Стиль, «что делает его уникальным», палитра v2, свет |

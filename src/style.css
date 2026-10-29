@@ -39,3 +39,6 @@ canvas.chart{width:100%;height:120px;background:rgba(0,0,0,.25);border-radius:va
 ::-webkit-scrollbar{width:8px} ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:4px}
 
 @media (max-height:820px){#tools .hint{display:none !important} #tools button{height:30px !important}}
+/* QA v7: компактная плашка обучения в правом нижнем углу (стиль переопределён снаружи, src/engage не тронут) */
+#ui #eng-goal{top:auto !important;left:auto !important;transform:none !important;right:8px !important;bottom:8px !important;width:290px !important;max-width:290px !important;padding:8px 10px !important;font-size:12px !important}
+#ui #eng-goal .t{font-size:13px !important} #ui #eng-goal .h{white-space:normal !important;overflow:visible !important}

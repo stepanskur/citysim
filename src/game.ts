@@ -1,3 +1,6 @@
+import { placeSignals, signalState, SIGNAL_STATE_COLOR, type Approach } from '../design/traffic-signals';
+import { SIGNAL } from '../design/palette';
+import { SIGNAL_LAMPS } from '../design/models/props';
 import * as THREE from 'three';
 import { World } from './world/World';
 import { Renderer, QUALITIES } from './render/Renderer';
@@ -110,18 +113,23 @@ export class Game {
     m.forEach((M, i) => { M.count = cnt[i]; M.instanceMatrix.needsUpdate = true; if (M.instanceColor) M.instanceColor.needsUpdate = true; });
     // traffic lights near camera
     const L = r.lightMesh; let n = 0;
-    if (r.ctl.dist < 550) { // светофор = тонкая цветная стоп-линия на своей полосе, только вблизи
-      const net = w.net; const cx = r.ctl.tx, cz = r.ctl.tz; const RR = 360;
+    const P = r.signalPoles; let np = 0;
+    if (r.ctl.dist < SIGNAL.lodDist) { // светофоры: модели дизайнера (столб + линза), FIX_VISUALS §1
+      const net = w.net; const cx = r.ctl.tx, cz = r.ctl.tz; const RR = 320; const tt = performance.now() / 1000;
       for (let a = Math.floor((cx - RR) / 64); a <= Math.floor((cx + RR) / 64); a++) for (let b = Math.floor((cz - RR) / 64); b <= Math.floor((cz + RR) / 64); b++) {
         const cell = net.nodeGrid.get(a * 131072 + b); if (!cell) continue;
         for (const id of cell) { const N0 = net.nodes[id]; if (!N0.alive || N0.edges.length < 3) continue;
-          let rr = 0; for (const e of N0.edges) rr = Math.max(rr, ROAD_TYPES[net.edges[e].type].w * 0.4);
-          for (const e of N0.edges) { if (n >= 3000) break; const E = net.edges[e]; if (E.len < rr * 2 + 6) continue; const o = net.nodes[E.a === id ? E.b : E.a]; const dx = (o.x - N0.x) / E.len, dz = (o.z - N0.z) / E.len; const hw = ROAD_TYPES[E.type].w * 0.4;
-            const x = N0.x + dx * (rr + 1.2) - dz * hw * 0.5, z = N0.z + dz * (rr + 1.2) + dx * hw * 0.5;
-            d.position.set(x, w.roadY(x, z) + 0.12 + E.type * 0.02, z); d.rotation.set(0, Math.atan2(dx, dz), 0); d.scale.set(hw * 0.9, 1, 1); d.updateMatrix(); L.setMatrixAt(n, d.matrix); L.setColorAt(n, this.col.setHex(this.traffic.green(id, e) ? 0x2fd36a : 0xe8453c)); n++; } }
+          const app: Approach[] = []; for (const e of N0.edges) { const E = net.edges[e]; const oi = E.a === id ? E.b : E.a; const o = net.nodes[oi]; if (!E.alive || !o.alive) continue; app.push({ e, dx: (o.x - N0.x) / E.len, dz: (o.z - N0.z) / E.len, type: E.type, len: E.len, alive: true }); }
+          const cd = Math.hypot(N0.x - r.cam.position.x, N0.z - r.cam.position.z);
+          for (const sp of placeSignals(N0.x, N0.z, app, Math.min(cd, r.ctl.dist))) { if (np >= 1200) break;
+            const y = w.roadY(sp.x, sp.z); d.position.set(sp.x, y, sp.z); d.rotation.set(0, sp.rot, 0); d.scale.setScalar(sp.scale); d.updateMatrix(); P.setMatrixAt(np, d.matrix);
+            const st = signalState(sp.group, id, tt, this.traffic.green(id, sp.e)); const lp = SIGNAL_LAMPS[st];
+            d.position.set(sp.x + (Math.sin(sp.rot) * lp[2] + Math.cos(sp.rot) * lp[0]) * sp.scale, y + lp[1] * sp.scale, sp.z + (Math.cos(sp.rot) * lp[2] - Math.sin(sp.rot) * lp[0]) * sp.scale); d.updateMatrix(); L.setMatrixAt(np, d.matrix); L.setColorAt(np, this.col.setHex(SIGNAL_STATE_COLOR[st])); np++; n++; }
+        }
       }
       d.scale.set(1, 1, 1);
     }
+    P.count = np; P.instanceMatrix.needsUpdate = true;
     L.count = n; L.instanceMatrix.needsUpdate = true; if (L.instanceColor) L.instanceColor.needsUpdate = true;
   }
   buildLineMeshes() {
