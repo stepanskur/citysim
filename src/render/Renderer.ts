@@ -4,6 +4,13 @@ import { createGroundMaterial, groundUniforms, surfaceWeights, groundSplatColor,
 import { buildJunction, padRadiusFor, roadMaterials, type Arm } from '../../design/road-kit';
 import { ROAD_SPEC, GROUND } from '../../design/palette';
 const SWC = new THREE.Color(ROAD_SPEC.color.sidewalk);
+const MEDC = new THREE.Color(GROUND.grass);
+const ASPH = [0x7d8190, 0x5b5f70, 0x4f5366, 0x8d8f99];
+/** Перекраска площадки перекрёстка дизайнера в нашу иерархию цветов асфальта. */
+function recolorJunction(g: THREE.BufferGeometry, mainType: number) {
+  const ca = g.attributes.color as THREE.BufferAttribute; const tc = new THREE.Color(); const src = [ROAD_SPEC.color.pad, ...ROAD_SPEC.color.asphalt].map(h => new THREE.Color(h)); const dst = [ASPH[mainType], ...ASPH].map(h => new THREE.Color(h));
+  for (let i = 0; i < ca.count; i++) { tc.setRGB(ca.getX(i), ca.getY(i), ca.getZ(i)); for (let k = 0; k < src.length; k++) if (Math.abs(tc.r - src[k].r) + Math.abs(tc.g - src[k].g) + Math.abs(tc.b - src[k].b) < 0.004) { ca.setXYZ(i, dst[k].r, dst[k].g, dst[k].b); break; } }
+}
 import { createStyledMaterial, styleUniforms } from '../../design/scene-preset';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 const h01 = (a: number, b: number) => { const q = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return q - Math.floor(q); };
@@ -110,6 +117,14 @@ export class Renderer {
     this.signalPoles = new THREE.InstancedMesh(this.lib.get({ type: 'prop', kind: 'trafficLight' } as any, 0), this.styledMat, 1200); this.signalPoles.count = 0; this.signalPoles.frustumCulled = false; this.signalPoles.castShadow = true; this.scene.add(this.signalPoles);
     this.scene.add(this.lineGroup); this.scene.add(this.toolGroup);
     this.buildOverview();
+    { // V8: «юбка» земли за краем карты — нет жёсткого прямоугольника на фоне неба; уходит в туман
+      const M = world.M, E = M * 4, parts: THREE.BufferGeometry[] = [];
+      for (const [x0, z0, x1, z1] of [[-E, -E, M + E, 0], [-E, M, M + E, M + E], [-E, 0, 0, M], [M, 0, M + E, M]]) { const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, 8, 8); g.rotateX(-Math.PI / 2); g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2); parts.push(g); }
+      const sk = mergeGeometries(parts)!; const pa = sk.attributes.position as THREE.BufferAttribute; const cl = new Float32Array(pa.count * 3); const gc = new THREE.Color(GROUND.grass);
+      for (let v = 0; v < pa.count; v++) { const x = pa.getX(v), z = pa.getZ(v); const ex = Math.min(Math.max(x, 1), M - 1), ez = Math.min(Math.max(z, 1), M - 1); const out = Math.hypot(x - ex, z - ez); pa.setY(v, out < 1 ? Math.max(world.hAt(ex, ez), 0.5) - 0.3 : 0.8); cl[v * 3] = gc.r; cl[v * 3 + 1] = gc.g; cl[v * 3 + 2] = gc.b; }
+      sk.setAttribute('color', new THREE.BufferAttribute(cl, 3)); sk.computeVertexNormals();
+      this.scene.add(new THREE.Mesh(sk, this.terrainMat));
+    }
     this.resize(); window.addEventListener('resize', () => this.resize());
   }
   setQuality(q: Quality) { this.q = q; this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pixelRatio)); this.renderer.shadowMap.enabled = q.shadows; this.sun.castShadow = q.shadows; this.scene.traverse(o => { if ((o as any).material) ((o as any).material as THREE.Material).needsUpdate = true; }); this.resize(); }
@@ -156,7 +171,7 @@ export class Renderer {
     for (let v = 0; v < pos.count; v++) { const x = pos.getX(v), z = pos.getZ(v); pos.setY(v, w.hAt(Math.min(x, w.M - 1), Math.min(z, w.M - 1)) - 1.5); this.tileColor(Math.floor(x / TILE), Math.floor(z / TILE), c); col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b; }
     void st;
     g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 });
+    const mat = createGroundMaterial({ polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 }); // V8: тот же материал, что у земли и «юбки» — без светлого квадрата
     if (this.overview) { this.scene.remove(this.overview); this.overview.geometry.dispose(); }
     this.overview = new THREE.Mesh(g, mat); this.overview.receiveShadow = false; this.scene.add(this.overview);
   }
@@ -182,7 +197,7 @@ export class Renderer {
   }
   roadColor(e: number, type: number, c: THREE.Color) {
     if (this.overlay === 'traffic') { const l = clamp(this.edgeLoad(e), 0, 1.2); if (l < 0.5) c.setRGB(0.2 + l * 1.4, 0.8, 0.25); else c.setRGB(0.95, clamp(1.6 - l * 1.4, 0, 0.8), 0.15); return c; }
-    return c.setHex(ROAD_SPEC.color.asphalt[type] ?? (type === 4 ? 0x8c857a : ROAD_SPEC.color.asphalt[0])); // светло-серый асфальт (палитра)
+    return c.setHex(ASPH[type] ?? (type === 4 ? 0x8c857a : ASPH[0])); // V8: улица светлее, проспект/шоссе темнее — иерархия читается // светло-серый асфальт (палитра)
   }
   padR(n: number) { const net = this.world.net; return padRadiusFor(net.nodes[n].edges.filter(e => net.edges[e].alive).map(e => ({ dx: 0, dz: 0, type: net.edges[e].type, len: 0 }))); }
   marksMat = roadMaterials().marks;
@@ -211,8 +226,14 @@ export class Renderer {
       const base = pos.length / 3;
       for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = w.roadY(x, z) + ROAD_SPEC.y.asphalt - 0.1 + E.type * 0.005; pos.push(x + px, y, z + pz, x - px, y, z - pz); col.push(c.r, c.g, c.b, c.r, c.g, c.b); }
       for (let s = 0; s < steps; s++) { const p = base + s * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
+      // V8: проспект — зелёный разделитель, шоссе/проспект — белые краевые линии
+      const strip = (o0: number, o1: number, dy: number, cr: number, cg: number, cb: number) => { const b4 = pos.length / 3; for (let s2 = 0; s2 <= steps; s2++) { const x = A.x + (B.x - A.x) * s2 / steps, z = A.z + (B.z - A.z) * s2 / steps; const y = w.roadY(x, z) + ROAD_SPEC.y.asphalt - 0.1 + dy; pos.push(x - dz * o0, y, z + dx * o0, x - dz * o1, y, z + dx * o1); col.push(cr, cg, cb, cr, cg, cb); } for (let s2 = 0; s2 < steps; s2++) { const p = b4 + s2 * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); } };
+      if (this.overlay === 'none' && (E.type === 1 || E.type === 2)) {
+        if (E.type === 1) { const m = ROAD_SPEC.median[1] / 2; strip(-m, m, 0.03, MEDC.r, MEDC.g, MEDC.b); }
+        for (const sg of [1, -1]) strip(sg * (hw - 0.55), sg * (hw - 0.4), 0.025, 0.92, 0.91, 0.88);
+      }
       // center dashes for avenues/highways
-      if (E.type !== 3) {
+      if (E.type !== 3 && E.type !== 1) {
         const lc = this.overlay === 'traffic' ? c : new THREE.Color(0xd8d8c8);
         const nd = Math.floor(E.len / 9);
         const jA = net.nodes[E.a].edges.length >= 3 ? this.padR(E.a) + 16 : 0, jB = net.nodes[E.b].edges.length >= 3 ? this.padR(E.b) + 16 : 0;
@@ -227,7 +248,7 @@ export class Renderer {
         if (live.length >= 3) { // эталонный перекрёсток дизайнера: площадка со скруглениями, бордюр, зебры, стоп-линии
           const R = this.padR(nn);
           const arms: Arm[] = live.map(e2 => { const E2 = net.edges[e2]; const o = net.nodes[E2.a === nn ? E2.b : E2.a]; return { dx: (o.x - N0.x) / E2.len, dz: (o.z - N0.z) / E2.len, type: E2.type, len: Math.max(R + 2, Math.min(E2.len / 2, R + 16)) }; });
-          try { const J = buildJunction(N0.x, N0.z, arms, y0); jBase.push(J.base); jMarks.push(J.marks); } catch { /* вырожденный узел — пропуск */ }
+          try { const J = buildJunction(N0.x, N0.z, arms, y0); recolorJunction(J.base, Math.max(...arms.map(a => a.type === 3 ? -1 : a.type)) < 0 ? 3 : Math.max(...arms.map(a => a.type === 3 ? -1 : a.type))); jBase.push(J.base); jMarks.push(J.marks); } catch { /* вырожденный узел — пропуск */ }
           continue;
         }
         let r = 0, rs = 0, mt = 0, me = N0.edges[0]; for (const e2 of live) { const t = net.edges[e2].type; r = Math.max(r, ROAD_SPEC.asphalt[t] / 2); rs = Math.max(rs, ROAD_SPEC.asphalt[t] / 2 + ROAD_SPEC.curbW + ROAD_SPEC.sidewalk[t]); if (t >= mt) { mt = t; me = e2; } }
@@ -277,6 +298,11 @@ export class Renderer {
         continue;
       }
       const kd = w.kind[k]; const st = w.style[k];
+      if (detail === 0 && (kd === K.RES || kd === K.COM || kd === K.IND)) { // V8 блочный LOD: дальний квартал = масса одного цвета по району, высота сглажена
+        const sm = smoothL(i, j, kd); const hgt = kd === K.IND ? 7 : Math.min(60, 2.5 + sm * 2.6); const dz = hash2(Math.floor(i / 4), Math.floor(j / 4), 5);
+        const col = kd === K.RES ? (sm <= 2 ? pick([0xd9c7a8, 0xcfbfa4, 0xc8b59a], dz) : pick([0xd8d2c6, 0xcfd3d6, 0xd6cbbb], dz)) : kd === K.COM ? pick([0xc4ccd6, 0xbfc7cf], dz) : 0xaaa79f;
+        boxes.push([x, w.hAt(x, z) - 0.3, z, 13.5, sm <= 2 && kd === K.RES ? 4 : hgt, 13.5, 0, col]); continue;
+      }
       if (kd === K.RES || kd === K.COM || kd === K.IND) { // жилые/коммерческие/промышленные — по участкам (Lots); внутренность квартала — двор
         if (detail >= 2 && kd !== K.IND && this.lots && !this.lots.occ.has(Math.floor(x / 4) * 100003 + Math.floor(z / 4)) && !w.road[k]) {
           const y = w.hAt(x, z) - 0.2; const hq = hash2(i, j, 77);
@@ -341,7 +367,7 @@ export class Renderer {
       else if (kd === K.PORT) { boxes.push([x, y, z, 16, 2, 16, 0, 0x6a6a6a]); boxes.push([x - 3, y + 2, z, 3, 22, 3, 0, 0xd9a03c]); boxes.push([x + 2, y + 22, z, 16, 2, 2, 0, 0xd9a03c]); boxes.push([x + 4, y + 2, z + 4, 6, 5, 6, 0, 0x2f7fbf]); boxes.push([x + 4, y + 2, z - 4, 6, 5, 6, 0, 0xbf3f2f]); }
     }
     // ── участки вдоль улиц: настоящие лоты разной ширины/глубины, фасадом к улице
-    {
+    if (detail >= 1) {
       const x0 = cx * CHUNK * TILE, z0 = cz * CHUNK * TILE, cs = CHUNK * TILE;
       const seen = new Set<number>();
       for (const e of w.net.edgesNear(x0 + cs / 2, z0 + cs / 2, cs * 0.75 + 120)) {

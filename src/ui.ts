@@ -50,7 +50,13 @@ export class UI {
     const sp = this.top.querySelector('#speeds')!; ['⏸', '▶', '▶▶', '▶▶▶', '⏩'].forEach((t, i) => { const b = h(`<button title="Скорость ${SPEEDS[i]}× (клавиша ${i === 0 ? 'Пробел' : i})">${t}</button>`); b.onclick = () => this.setSpeed(i); sp.appendChild(b); });
     this.top.querySelectorAll('button[data-p]').forEach(b => (b as HTMLElement).onclick = () => this.open((b as HTMLElement).dataset.p!));
     (this.top.querySelector('#overlay') as HTMLSelectElement).onchange = e => this.setOverlay((e.target as HTMLSelectElement).value as Overlay);
-    TOOLS.forEach(t => { const b = h(`<button data-t="${t.id}">${t.name}<kbd>${t.key}</kbd></button>`); b.onclick = () => g.tools.set(t.id, t.id === 'zone' ? 1 : 0); this.toolsEl.appendChild(b); });
+    TOOLS.forEach(t => { const sp0 = t.name.indexOf(' '); const b = h(`<button data-t="${t.id}" title="${t.name.slice(sp0 + 1)} (${t.key})"><span><span class="ic">${t.name.slice(0, sp0)}</span><span class="lb"> ${t.name.slice(sp0 + 1)}</span></span><kbd>${t.key}</kbd></button>`); b.onclick = () => g.tools.set(t.id, t.id === 'zone' ? 1 : 0); this.toolsEl.appendChild(b); });
+    { // V8: сворачиваемая панель инструментов; состояние в localStorage, на малых экранах по умолчанию свёрнута
+      const tg = h(`<button id="tools-toggle" title="Свернуть/развернуть панель (Tab)">◀</button>`); this.toolsEl.prepend(tg);
+      const saved = localStorage.getItem('citysim_tools'); let col = saved ? saved === '0' : (innerWidth < 1400 || innerHeight < 820);
+      const apply = () => { this.toolsEl.classList.toggle('collapsed', col); tg.textContent = col ? '▶' : '◀ Свернуть'; };
+      tg.onclick = () => { col = !col; localStorage.setItem('citysim_tools', col ? '0' : '1'); apply(); }; apply();
+    }
     this.toolsEl.appendChild(h(`<div class="hint" style="margin-top:6px">ЛКМ — действие · ПКМ — вращение/отмена · Shift+ЛКМ или СКМ — сдвиг · колесо — зум · WASD/QE/RF</div>`));
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
