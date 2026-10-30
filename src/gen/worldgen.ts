@@ -1,5 +1,9 @@
 import { mulberry32, Noise, smooth, clamp, lerp, MinHeap } from '../util';
 import { RoadNet, ROAD_TYPES } from '../world/RoadNet';
+import { spacingOk, unifyClasses, repairNetwork } from './netgen';
+import { BALANCE } from '../sim/balance';
+import { LEVEL_DECK, LEVEL_GRADE } from '../world/World';
+import { filletPolyline } from '../../design/road-curves';
 import { TILE, SIZES, Z, K, RES, markRoadTiles } from '../world/consts';
 
 export interface CityInfo { id: number; name: string; x: number; z: number; r: number; kind: string; pattern: string; main: boolean; indDir: number; form?: string; formRu?: string; axis?: number; aniso?: number; districts?: { name: string; type: string; x: number; z: number }[] }
@@ -169,10 +173,11 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
           const x = P.x + Math.cos(h) * L, z = P.z + Math.sin(h) * L;
           if (Math.hypot(x - sx, z - sz) > rad || !inside(x, z) || hAt(x, z) < 0.6 || !okSeg(P.x, P.z, x, z, f.t === 1 ? 160 : 0)) continue;
           const near = net.nearestNode(x, z, L * 0.45, n => n !== f.n);
+          if (near < 0 && !spacingOk(net, P.x, P.z, x, z, f.t, f.n)) continue; // этап B: отступы и углы (13 §1)
           if (near >= 0) { const Q = net.nodes[near]; if (okSeg(P.x, P.z, Q.x, Q.z, 0)) made += net.addRoad(P.x, P.z, Q.x, Q.z, f.t, 3, c.id).length; break; }
           made += net.addRoad(P.x, P.z, x, z, f.t, 3, c.id).length;
           const nn = net.nearestNode(x, z, 2); if (nn < 0) break;
-          front.push({ n: nn, h, t: f.t === 1 && crnd() < 0.8 ? 1 : f.t });
+          front.push({ n: nn, h, t: f.t }); // этап B: класс не меняется посреди дороги
           const side = f.t === 1 ? 0 : 3;
           if (crnd() < branch) front.push({ n: nn, h: h + Math.PI / 2 + (crnd() - 0.5) * 0.12, t: crnd() < 0.5 ? side : 0 });
           if (crnd() < branch) front.push({ n: nn, h: h - Math.PI / 2 + (crnd() - 0.5) * 0.12, t: crnd() < 0.5 ? side : 0 });
@@ -182,7 +187,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     };
     const core = c.r * (F === 'hilly' || F === 'river' ? 0.26 + crnd() * 0.1 : F === 'grid' ? 0.1 + crnd() * 0.06 : 0.16 + crnd() * 0.1);
     // 1. historic core: dense, crooked, narrow lanes
-    organic(c.x, c.z, core, 32, 26, Math.PI * core * core / (45 * 45) * 2, 0, 0.5);
+    organic(c.x, c.z, core, BALANCE.netgen.junctionSpacing.street, 30, Math.PI * core * core / (70 * 70) * 2, 0, 0.42); // этап B: шаг ≥ junctionSpacing.street, кварталы ≥ blockMin
     // 2. radial arterials (old roads to the countryside)
     const spokes = F === 'radial' ? 5 + Math.floor(crnd() * 2) : F === 'linear' || F === 'river' ? 2 : F === 'grid' ? 2 : 3 + Math.floor(crnd() * 2);
     for (let k = 0; k < spokes; k++) {
@@ -200,7 +205,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     const nSec = F === 'grid' || F === 'linear' ? 1 : F === 'radial' ? 6 + Math.floor(crnd() * 3) : 3 + Math.floor(crnd() * 4); const secOff = crnd() * Math.PI * 2;
     for (let sct = 0; sct < nSec; sct++) {
       const th = F === 'radial' ? secOff + (sct + 0.5) / nSec * Math.PI * 2 : F === 'grid' || F === 'linear' || F === 'river' ? ax + (crnd() < 0.7 ? 0 : 0.25) : crnd() * Math.PI; const ct = Math.cos(th), st = Math.sin(th);
-      const sA = F === 'grid' ? 80 + crnd() * 30 : F === 'resort' ? 110 + crnd() * 60 : 70 + crnd() * 90, sB = sA * (0.8 + crnd() * 1.0); // block sizes differ per district
+      const BM = BALANCE.netgen.blockMin; const sA0 = F === 'grid' ? 80 + crnd() * 30 : F === 'resort' ? 110 + crnd() * 60 : 70 + crnd() * 90, sA = Math.max(BM, sA0), sB = Math.max(BM, sA * (0.8 + crnd() * 1.0)); // этап B: квартал не меньше blockMin
       const a0 = secOff + sct / nSec * Math.PI * 2, a1 = secOff + (sct + 1) / nSec * Math.PI * 2;
       const inSec = (x: number, z: number) => { if (nSec === 1) return true; const a = Math.atan2(z - c.z, x - c.x); const d = ((a - a0) % (Math.PI * 2) + Math.PI * 4) % (Math.PI * 2); return d < a1 - a0; };
       const reach = c.r * (nSec === 1 ? 1.1 : 0.6 + crnd() * 0.5);
@@ -246,14 +251,60 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     while (u >= 0) { out.push([(u % GN + 0.5) * G, (((u / GN) | 0) + 0.5) * G]); u = from[u]; }
     out.reverse(); return out;
   };
+  /* Запрос Степана: шоссе шло ломаной по клеткам A* (каждая 3-я клетка, snap 14 — липло к улицам) и пересекало улицы где попало.
+   * Теперь: (1) клетки с существующими дорогами дороже (roadCellPenalty) — трасса обходит ткань улиц; (2) упрощение Дугласа–Пекера
+   * и скругление road-curves filletPolyline('highway') — дуги R ≥ rMin класса; (3) пересечения с наземными дорогами собираются
+   * по длине трассы в кластеры: одиночное пересечение не ближе junctionStep к предыдущей развязке → наземная развязка (узел);
+   * остальное → эстакада (lv 1) на интервале с рампами LEVEL_DECK/LEVEL_GRADE + rampMargin, а у концов трассы, где рампе
+   * не уместиться, — обрыв улицы (ребро удаляется, связность чинит repairNetwork). Промежуточные точки без прилипания (snap 2). */
+  const HWC = BALANCE.netgen.highway; const RAMP = LEVEL_DECK / LEVEL_GRADE + HWC.rampMargin;
+  for (const E of net.edges) { if (!E.alive) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const n = Math.ceil(E.len / (G / 2)); const seen = new Set<number>();
+    for (let q = 0; q <= n; q++) { const i = clamp(Math.floor((A.x + (B.x - A.x) * q / n) / G), 0, GN - 1), j = clamp(Math.floor((A.z + (B.z - A.z) * q / n) / G), 0, GN - 1); const k = j * GN + i; if (!seen.has(k)) { seen.add(k); gcost[k] += HWC.roadCellPenalty; } } }
+  const dp = (P: [number, number][], tol: number): [number, number][] => { if (P.length < 3) return P; const [a, b] = [P[0], P[P.length - 1]]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; let mi = -1, md = 0;
+    for (let i = 1; i < P.length - 1; i++) { const d = Math.abs((b[0] - a[0]) * (a[1] - P[i][1]) - (a[0] - P[i][0]) * (b[1] - a[1])) / L; if (d > md) { md = d; mi = i; } }
+    if (md <= tol) return [a, b]; const l = dp(P.slice(0, mi + 1), tol), r = dp(P.slice(mi), tol); return [...l.slice(0, -1), ...r]; };
+  const segX = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number) => { const den = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx); if (Math.abs(den) < 1e-9) return -1; const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / den, u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / den; return t >= 0 && t <= 1 && u > 0 && u < 1 ? t : -1; };
+  const hwLog = { atGrade: 0, elevated: 0, cut: 0 };
   const addHighway = (pts: [number, number][], startNode: number, endNode: number) => {
     if (pts.length < 2) return;
-    const simp: [number, number][] = [];
-    for (let k = 0; k < pts.length; k += 3) simp.push(pts[k]);
-    if (startNode >= 0) simp[0] = [net.nodes[startNode].x, net.nodes[startNode].z];
-    const last = pts[pts.length - 1];
-    if (endNode >= 0) simp.push([net.nodes[endNode].x, net.nodes[endNode].z]); else simp.push(last);
-    for (let k = 0; k + 1 < simp.length; k++) net.addRoad(simp[k][0], simp[k][1], simp[k + 1][0], simp[k + 1][1], 2, 14);
+    const raw = pts.slice(); if (startNode >= 0) raw[0] = [net.nodes[startNode].x, net.nodes[startNode].z]; if (endNode >= 0) raw.push([net.nodes[endNode].x, net.nodes[endNode].z]);
+    const ctrl = dp(raw, G * 1.2).map(p => ({ x: p[0], z: p[1] }));
+    // скругление: filletPolyline даёт дуги R ≥ rMin, но при коротких плечах радиус падал (изломы 20–45° на новых сидах) —
+    // поэтому сначала срезание углов Чайкина (×5, концы закреплены), затем fillet по сглаженной ломаной
+    let ch = ctrl; for (let it = 0; it < 5 && ch.length > 2; it++) { const o = [ch[0]]; for (let i = 0; i + 1 < ch.length; i++) { const a = ch[i], b = ch[i + 1]; if (i > 0) o.push({ x: a.x * 0.75 + b.x * 0.25, z: a.z * 0.75 + b.z * 0.25 }); if (i + 2 < ch.length) o.push({ x: a.x * 0.25 + b.x * 0.75, z: a.z * 0.25 + b.z * 0.75 }); } o.push(ch[ch.length - 1]); ch = o; }
+    const sm = ch.length > 2 ? filletPolyline(ch, 'highway').pts : ch;
+    // ресэмпл ~segLen
+    const P: { x: number; z: number; s: number }[] = [{ ...sm[0], s: 0 }]; let acc = 0;
+    for (let i = 1; i < sm.length; i++) { const d = Math.hypot(sm[i].x - sm[i - 1].x, sm[i].z - sm[i - 1].z); if (d < 1e-3) continue; acc += d; if (acc >= HWC.segLen || i === sm.length - 1) { const L0 = P[P.length - 1]; P.push({ ...sm[i], s: L0.s + Math.hypot(sm[i].x - L0.x, sm[i].z - L0.z) }); acc = 0; } }
+    // добивка радиуса: где поворот на узле > segLen/rMin (R < rMin шоссе 450 м) (рельеф заставил A* сделать «шпильку») — лапласово сглаживание точки
+    { const maxT = HWC.segLen / 450 * 1.15; for (let it = 0; it < 300; it++) { let moved = false; for (let i = 1; i + 1 < P.length; i++) { const a = P[i - 1], b = P[i], c = P[i + 1];
+        const u1 = Math.atan2(b.z - a.z, b.x - a.x), u2 = Math.atan2(c.z - b.z, c.x - b.x); let d = Math.abs(u2 - u1); if (d > Math.PI) d = 2 * Math.PI - d;
+        if (d > maxT) { b.x += ((a.x + c.x) / 2 - b.x) * 0.5; b.z += ((a.z + c.z) / 2 - b.z) * 0.5; moved = true; } } if (!moved) break; }
+      for (let i = 1; i < P.length; i++) P[i].s = P[i - 1].s + Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z); }
+    const Ltot = P[P.length - 1].s;
+    // трасса легла вдоль существующей улицы (коллинеарно, segX их не видит, а snap сливал узлы → «развязки» каждые 50 м): такие участки улиц убираем, шоссе их заменяет
+    for (let i = 0; i + 1 < P.length; i++) { const a = P[i], b = P[i + 1], L = Math.hypot(b.x - a.x, b.z - a.z) || 1, ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
+      const dl = (x: number, z: number) => { const t = Math.max(0, Math.min(L, (x - a.x) * ux + (z - a.z) * uz)); return Math.hypot(a.x + ux * t - x, a.z + uz * t - z); };
+      for (const e of net.edgesNear((a.x + b.x) / 2, (a.z + b.z) / 2, L / 2 + 20)) { const E = net.edges[e]; if (!E.alive || E.type === 2 || (E.lv || 0) !== 0) continue; const A = net.nodes[E.a], B = net.nodes[E.b];
+        const el = Math.hypot(B.x - A.x, B.z - A.z) || 1; if (Math.abs(((B.x - A.x) * ux + (B.z - A.z) * uz) / el) < 0.94) continue;
+        if (dl(A.x, A.z) < 10 && dl(B.x, B.z) < 10) { net.removeEdge(e); hwLog.cut++; } } }
+    // пересечения с существующими дорогами
+    const X: { s: number; e: number }[] = [];
+    for (let i = 0; i + 1 < P.length; i++) { const a = P[i], b = P[i + 1]; for (const e of net.edgesNear((a.x + b.x) / 2, (a.z + b.z) / 2, Math.hypot(b.x - a.x, b.z - a.z) / 2 + 40)) { const E = net.edges[e]; if (!E.alive || (E.lv || 0) !== 0) continue; const A = net.nodes[E.a], B = net.nodes[E.b];
+      const t = segX(a.x, a.z, b.x, b.z, A.x, A.z, B.x, B.z); if (t >= 0) { const s = a.s + (b.s - a.s) * t; if (s > 25 && s < Ltot - 25 && !X.some(q => q.e === e && Math.abs(q.s - s) < 1)) X.push({ s, e }); } } }
+    X.sort((a, b) => a.s - b.s);
+    const cl: { s: number; e: number }[][] = []; for (const x of X) { const c = cl[cl.length - 1]; if (c && x.s - c[c.length - 1].s < 2 * RAMP) c.push(x); else cl.push([x]); }
+    const elev: [number, number][] = []; let lastJ = startNode >= 0 ? 0 : -1e9;
+    for (const c of cl) { const s0 = c[0].s, s1 = c[c.length - 1].s;
+      if (c.length === 1 && s0 - lastJ >= HWC.junctionStep && Ltot - s0 >= HWC.junctionStep * 0.5) { lastJ = s0; hwLog.atGrade++; continue; }
+      if (s0 - RAMP > 0 && s1 + RAMP < Ltot) { elev.push([s0 - RAMP, s1 + RAMP]); hwLog.elevated += c.length; continue; }
+      for (const x of c) if (net.edges[x.e].alive && net.edges[x.e].type !== 2) { net.removeEdge(x.e); hwLog.cut++; } }
+    // слить интервалы и вставить их границы в полилинию
+    elev.sort((a, b) => a[0] - b[0]); const EV: [number, number][] = []; for (const v of elev) { const l = EV[EV.length - 1]; if (l && v[0] <= l[1] + 1) l[1] = Math.max(l[1], v[1]); else EV.push([...v] as [number, number]); }
+    const at = (s: number) => { for (let i = 0; i + 1 < P.length; i++) if (s <= P[i + 1].s) { const t = (s - P[i].s) / Math.max(1e-6, P[i + 1].s - P[i].s); return { x: P[i].x + (P[i + 1].x - P[i].x) * t, z: P[i].z + (P[i + 1].z - P[i].z) * t, s }; } return P[P.length - 1]; };
+    for (const [a, b] of EV) for (const s of [a, b]) { if (P.some(p => Math.abs(p.s - s) < 8)) continue; P.push(at(s)); P.sort((p, q) => p.s - q.s); }
+    for (let k = 0; k + 1 < P.length; k++) { const m = (P[k].s + P[k + 1].s) / 2; const lv = EV.some(([a, b]) => m > a && m < b) ? 1 : 0;
+      const snap = k === 0 || k + 2 === P.length ? 14 : 2; net.addRoad(P[k].x, P[k].z, P[k + 1].x, P[k + 1].z, 2, snap, -1, lv); }
   };
   const centerNode = (c: CityInfo) => net.findNode(c.x, c.z, c.r);
   // «ворота» города: шоссе подходит к узлу на полпути от центра в сторону цели, а не в центр
@@ -288,6 +339,16 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     addHighway(p, cn, -1);
     const en = net.nearestNode(best.x, best.z, 200); if (en >= 0) { net.nodes[en].outside = true; outs.push(en); sideUsed.add(best.side); nbrs.push({ name: (NB_NAMES[(best.side + k * 4 + (seed % 3)) % 8]) + ' регион', node: en, x: best.x, z: best.z, side: best.side }); }
   }
+  progress?.('Связность сети...');
+  { const genLog: string[] = []; const c0 = cities[0]; const mn = net.findNode(c0.x, c0.z, c0.r);
+    // запрос Степана: починочные связи не должны идти вдоль шоссе и резать его многократно — ≤1 пересечение шоссе, ≤25% длины ближе 60 м к шоссе
+    const hwConflict = (ax: number, az: number, bx: number, bz: number) => { const L = Math.hypot(bx - ax, bz - az); let cross = 0, near = 0; const n = Math.max(1, Math.ceil(L / 40));
+      for (const e of net.edgesNear((ax + bx) / 2, (az + bz) / 2, L / 2 + 80)) { const E = net.edges[e]; if (!E.alive || E.type !== 2) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const t = segX(ax, az, bx, bz, A.x, A.z, B.x, B.z); if (t > 0.01 && t < 0.99) cross++; }
+      for (let q = 0; q <= n; q++) { const x = ax + (bx - ax) * q / n, z = az + (bz - az) * q / n; for (const e of net.edgesNear(x, z, 60)) { const E = net.edges[e]; if (!E.alive || E.type !== 2) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const vx = B.x - A.x, vz = B.z - A.z; const t = clamp(((x - A.x) * vx + (z - A.z) * vz) / (vx * vx + vz * vz || 1), 0, 1); if (Math.hypot(A.x + vx * t - x, A.z + vz * t - z) < 60) { near++; break; } } }
+      return cross > 1 || near / (n + 1) > 0.25; };
+    if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), genLog,
+      (a, b) => { const A = net.nodes[a], B = net.nodes[b]; addHighway(gpath(A.x, A.z, B.x, B.z), a, b); });
+    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push(`шоссе: развязок ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}`); (globalThis as any).__netgenLog = genLog; }
   progress?.('Зонирование...');
   const road = new Uint8Array(N * N);
   for (const e of net.edges) { if (!e.alive) continue; const A = net.nodes[e.a], B = net.nodes[e.b]; markRoadTiles(N, road, A.x, A.z, B.x, B.z, e.type, ROAD_TYPES[e.type].w); }

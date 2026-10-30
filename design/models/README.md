@@ -22,3 +22,6 @@
 ## GeoBuilder (builder.ts)
 `box, band, gable, hip, dormer, solar, cyl, blob, windowAt, windowGrid, wheel, rotateY, build()`.
 **Совместимость v1:** `windows(cx,cz,w,d,y0,floors,floorH,c,winW=1.2,gap=1.6)` — сохранён (обёртка над windowGrid с сахарными рамами, без ночного свечения).
+
+## v4: темы и масштабируемые здания
+`createBuilding({ theme, kind, width, depth, floors|height, seed, lit, neutral, detail })` — см. `THEMES_SPEC.md`. Лимиты `dimensionsLimits()`, подгонка `fitDimensions()`, из участка `dimensionsFromLot()`, кэш `themedCacheKey()`. Старая форма `createBuilding(kind, opts)` не изменилась.

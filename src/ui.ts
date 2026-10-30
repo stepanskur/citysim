@@ -1,3 +1,5 @@
+import { schedule } from './sim/LineLoad';
+import { MOD, LEVEL_NAMES } from './world/RoadNet';
 import * as THREE from 'three';
 import type { Game } from './game';
 import { SPEEDS } from './game';
@@ -11,56 +13,66 @@ import { BALANCE } from './sim/balance';
 import { fmtMoney, fmtNum, clamp } from './util';
 
 const h = (html: string) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild as HTMLElement; };
-const TOOLS: { id: ToolId; name: string; key: string; subs?: string[] }[] = [
-  { id: 'select', name: '🔍 Выбор / обзор', key: '1' },
-  { id: 'road', name: '🛣 Дорога', key: '2', subs: ROAD_TYPES.map(r => r.name) },
-  { id: 'curve', name: '〰 Кривая дорога', key: '3', subs: ROAD_TYPES.map(r => r.name) },
-  { id: 'zone', name: '🏘 Зонирование', key: '4', subs: ['Снять зону', 'Жилая (Ж)', 'Коммерческая (К)', 'Промышленная (П)'] },
-  { id: 'bulldoze', name: '💥 Снос', key: '5' },
-  { id: 'terrain', name: '⛰ Рельеф', key: '6', subs: ['Поднять', 'Опустить', 'Выровнять'] },
-  { id: 'place', name: '🏗 Здания', key: '7', subs: PLACEABLES.map(p => `${p.name} (${fmtMoney(p.cost)})`) },
-  { id: 'line', name: '🚌 Линии транспорта', key: '8', subs: LINE_TYPES.map(t => t.name) },
+const ic = (id: string, cls = 'cs-ico') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
+const TOOLS: { id: ToolId; name: string; key: string; icon: string; subs?: string[] }[] = [
+  { id: 'select', name: 'Выбор / обзор', key: '1', icon: 'arrow' },
+  { id: 'road', name: 'Дорога', key: '2', icon: 'road', subs: ROAD_TYPES.map(r => r.name) },
+  { id: 'curve', name: 'Кривая дорога', key: '3', icon: 'road', subs: ROAD_TYPES.map(r => r.name) },
+  { id: 'zone', name: 'Зонирование', key: '4', icon: 'zone', subs: ['Снять зону', 'Жилая (Ж)', 'Коммерческая (К)', 'Промышленная (П)'] },
+  { id: 'bulldoze', name: 'Снос', key: '5', icon: 'bulldoze' },
+  { id: 'terrain', name: 'Рельеф', key: '6', icon: 'layers', subs: ['Поднять', 'Опустить', 'Выровнять'] },
+  { id: 'place', name: 'Здания', key: '7', icon: 'build', subs: PLACEABLES.map(p => `${p.name} (${fmtMoney(p.cost)})`) },
+  { id: 'line', name: 'Линии транспорта', key: '8', icon: 'bus', subs: LINE_TYPES.map(t => t.name) },
+  { id: 'rail', name: 'Пути (ж/д, трамвай, метро)', key: '9', icon: 'rail', subs: ['Ж/д', 'Трамвай', 'Метро'] },
 ];
+const PANEL_IC: Record<string, string> = { eco: 'coin', transport: 'bus', cities: 'build', region: 'zone', charts: 'chart', settings: 'cog', save: 'sparkle', help: 'smile', engage: 'bell', routes: 'rail' };
+const OV_SW: Record<string, string> = { none: '#b8b6d4', traffic: 'linear-gradient(90deg,#3cb043,#f2c230,#e04848)', land: 'linear-gradient(90deg,#ff7a6a,#5fe09a)', pollution: 'linear-gradient(90deg,#5fe09a,#ff7a6a)', transit: '#5fe0c8', resources: '#ffc145', zones: 'linear-gradient(90deg,#5fe09a,#7aaaff,#ffc145)', territory: 'linear-gradient(90deg,#7aaaff,#ff7a59)' };
 const OVERLAYS: [Overlay, string][] = [['none', 'Обычный вид'], ['traffic', 'Загрузка дорог'], ['land', 'Стоимость земли'], ['pollution', 'Загрязнение'], ['transit', 'Покрытие транспортом'], ['resources', 'Ресурсы'], ['zones', 'Зоны'], ['territory', 'Территории']];
 
 /** точка подключения панелей внешних модулей (например src/routes/): UI.registerPanel('routes','🔀 Маршруты', render) */
 export class UI {
   static extraPanels = new Map<string, { title: string; render: (el: HTMLElement, g: Game, force: boolean) => void }>();
   static registerPanel(id: string, title: string, render: (el: HTMLElement, g: Game, force: boolean) => void) { UI.extraPanels.set(id, { title, render }); }
-  root = document.getElementById('ui')!; top: HTMLElement; toolsEl: HTMLElement; sub: HTMLElement; right: HTMLElement; info: HTMLElement; notes: HTMLElement; mini: HTMLCanvasElement; hint: HTMLElement; legend: HTMLElement;
+  root = document.getElementById('ui')!; top: HTMLElement; layers!: HTMLElement; tip!: HTMLElement; toolsEl: HTMLElement; sub: HTMLElement; right: HTMLElement; info: HTMLElement; notes: HTMLElement; mini: HTMLCanvasElement; hint: HTMLElement; legend: HTMLElement;
   panel = ''; lastUpd = 0; selCity = 0; miniBase: ImageData | null = null; miniT = 0; curLine = -1;
   constructor(public g: Game) {
     this.root.innerHTML = '';
-    this.top = h(`<div id="top" class="panel">
-      <div class="stat"><b id="money"></b><span>бюджет <i id="delta"></i></span></div>
-      <div class="stat"><b id="pop"></b><span>население региона</span></div>
-      <div class="stat"><b id="date"></b><span id="clock"></span></div>
-      <div class="sp" id="speeds"></div>
-      <div class="grow"></div>
-      <select id="overlay">${OVERLAYS.map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select>
-      <button data-p="eco">💰 Экономика</button><button data-p="transport">🚦 Транспорт</button><button data-p="cities">🏙 Города</button><button data-p="region">🗺 Регион</button><button data-p="charts">📈 Графики</button><button data-p="settings">⚙ Настройки</button><button data-p="save">💾 Сохранения</button><button data-p="help">❔</button>
+    // UI_AUDIT P0 п.3: капсула статов слева, сегмент скорости по центру, иконки панелей справа
+    this.top = h(`<div id="top">
+      <div class="cs-glass cs-stats"><div class="st">${ic('coin')}<div><b id="money" class="cs-value"></b><small><i id="delta"></i></small></div></div>
+        <div class="st">${ic('pop')}<div><b id="pop" class="cs-value"></b><small>население</small></div></div>
+        <div class="st">${ic('sun')}<div><b id="date" class="cs-value"></b><small id="clock"></small></div></div></div>
+      <div class="cs-glass cs-speedwrap"><div class="cs-seg" id="speeds"></div></div>
+      <div class="cs-glass cs-iconbar" id="pbtns">
+        <button class="cs-btn cs-btn--icon" id="layers-btn" data-tip="Слои карты">${ic('layers')}</button><span class="cs-sep"></span>
+        ${[['eco', 'Экономика'], ['transport', 'Транспорт'], ['cities', 'Города'], ['region', 'Регион'], ['charts', 'Графики'], ['settings', 'Настройки'], ['save', 'Сохранения'], ['help', 'Как играть']].map(([p, t]) => `<button class="cs-btn cs-btn--icon" data-p="${p}" data-tip="${t}">${ic(PANEL_IC[p])}</button>`).join('')}
+      </div>
     </div>`);
-    for (const [id, pn] of UI.extraPanels) { const b = h(`<button data-p="${id}">${pn.title}</button>`); this.top.querySelector('button[data-p="settings"]')!.before(b); }
-    this.toolsEl = h(`<div id="tools" class="panel"></div>`); this.sub = h(`<div id="sub" class="panel"></div>`);
-    this.right = h(`<div id="right" class="panel"></div>`); this.info = h(`<div id="info" class="panel"></div>`); this.notes = h(`<div id="notes"></div>`);
-    const miniWrap = h(`<div id="mini" class="panel"><canvas width="256" height="256"></canvas></div>`); this.mini = miniWrap.querySelector('canvas')!;
-    this.hint = h(`<div style="position:fixed;pointer-events:none;background:rgba(0,0,0,.7);padding:3px 7px;border-radius:5px;font-size:12px;display:none;z-index:5"></div>`);
-    this.legend = h(`<div class="legend panel"></div>`);
-    for (const e of [this.top, this.toolsEl, this.sub, this.right, this.info, this.notes, miniWrap, this.hint, this.legend]) this.root.appendChild(e);
-    const sp = this.top.querySelector('#speeds')!; ['⏸', '▶', '▶▶', '▶▶▶', '⏩'].forEach((t, i) => { const b = h(`<button title="Скорость ${SPEEDS[i]}× (клавиша ${i === 0 ? 'Пробел' : i})">${t}</button>`); b.onclick = () => this.setSpeed(i); sp.appendChild(b); });
+    for (const [id, pn] of UI.extraPanels) { const t = pn.title.replace(/^[^\p{L}\p{N}]+/u, '').trim(); const b = h(`<button class="cs-btn cs-btn--icon" data-p="${id}" data-tip="${t}">${ic(PANEL_IC[id] || 'sparkle')}</button>`); this.top.querySelector('button[data-p="settings"]')!.before(b); }
+    // п.4: слои — вертикальный список со свотчами
+    this.layers = h(`<div id="layers" class="cs-glass cs-enter" hidden><div class="cs-label" style="padding:4px 8px 6px">Слои карты</div><div class="cs-list">${OVERLAYS.map(([o, n]) => `<div class="cs-row" data-o="${o}"><span class="cs-dot" style="background:${OV_SW[o]}"></span>${n}</div>`).join('')}</div></div>`);
+    // п.1–2: док инструментов снизу по центру + сегмент-подменю над ним
+    this.toolsEl = h(`<div id="dock" class="cs-glass cs-dock"></div>`); this.sub = h(`<div id="toolsub" class="cs-glass" hidden></div>`);
+    this.right = h(`<div id="right" class="cs-glass cs-panel"></div>`); this.info = h(`<div id="info" class="cs-glass cs-panel"></div>`); this.notes = h(`<div id="notes"></div>`);
+    const miniWrap = h(`<div id="mini" class="cs-glass"><canvas width="256" height="256"></canvas><div class="mz"><button class="cs-btn cs-btn--icon" data-z="-1">+</button><button class="cs-btn cs-btn--icon" data-z="1">−</button></div></div>`); this.mini = miniWrap.querySelector('canvas')!;
+    miniWrap.querySelectorAll('button[data-z]').forEach(b => (b as HTMLElement).onclick = () => { const c = g.r.ctl; c.gdist = Math.max(60, Math.min(12000, (c.gdist ?? c.dist) * (+(b as HTMLElement).dataset.z! > 0 ? 1.5 : 1 / 1.5))); });
+    this.hint = h(`<div id="cur-hint" class="cs-glass"></div>`); // п.9
+    this.legend = h(`<div class="legend cs-glass"></div>`); this.tip = h(`<div class="cs-tooltip" id="tip" hidden></div>`);
+    for (const e of [this.top, this.layers, this.toolsEl, this.sub, this.right, this.info, this.notes, miniWrap, this.hint, this.legend, this.tip]) this.root.appendChild(e);
+    const sp = this.top.querySelector('#speeds')!; ['pause', 'play', 'ff', 'ff', 'ff'].forEach((t, i) => { const b = h(`<button aria-pressed="false" data-tip="Скорость ${SPEEDS[i]}× (${i === 0 ? 'Пробел' : 'клавиша ' + i})">${ic(t)}${i >= 3 ? `<sup>${i - 1}</sup>` : ''}</button>`); b.onclick = () => this.setSpeed(i); sp.appendChild(b); });
     this.top.querySelectorAll('button[data-p]').forEach(b => (b as HTMLElement).onclick = () => this.open((b as HTMLElement).dataset.p!));
-    (this.top.querySelector('#overlay') as HTMLSelectElement).onchange = e => this.setOverlay((e.target as HTMLSelectElement).value as Overlay);
-    TOOLS.forEach(t => { const sp0 = t.name.indexOf(' '); const b = h(`<button data-t="${t.id}" title="${t.name.slice(sp0 + 1)} (${t.key})"><span><span class="ic">${t.name.slice(0, sp0)}</span><span class="lb"> ${t.name.slice(sp0 + 1)}</span></span><kbd>${t.key}</kbd></button>`); b.onclick = () => g.tools.set(t.id, t.id === 'zone' ? 1 : 0); this.toolsEl.appendChild(b); });
-    { // V8: сворачиваемая панель инструментов; состояние в localStorage, на малых экранах по умолчанию свёрнута
-      const tg = h(`<button id="tools-toggle" title="Свернуть/развернуть панель (Tab)">◀</button>`); this.toolsEl.prepend(tg);
-      const saved = localStorage.getItem('citysim_tools'); let col = saved ? saved === '0' : (innerWidth < 1400 || innerHeight < 820);
-      const apply = () => { this.toolsEl.classList.toggle('collapsed', col); tg.textContent = col ? '▶' : '◀ Свернуть'; };
-      tg.onclick = () => { col = !col; localStorage.setItem('citysim_tools', col ? '0' : '1'); apply(); }; apply();
-    }
-    this.toolsEl.appendChild(h(`<div class="hint" style="margin-top:6px">ЛКМ — действие · ПКМ — вращение/отмена · Shift+ЛКМ или СКМ — сдвиг · колесо — зум · WASD/QE/RF</div>`));
+    (this.top.querySelector('#layers-btn') as HTMLElement).onclick = () => { this.layers.hidden = !this.layers.hidden; };
+    this.layers.querySelectorAll('[data-o]').forEach(r => (r as HTMLElement).onclick = () => { this.setOverlay((r as HTMLElement).dataset.o as Overlay); });
+    TOOLS.forEach((t, i) => { if (i === 1 || i === 4 || i === 7) this.toolsEl.appendChild(h(`<span class="cs-sep"></span>`));
+      const b = h(`<button class="cs-tool${t.id === 'bulldoze' ? ' cs-tool--danger' : ''}" data-t="${t.id}" aria-pressed="false" data-tip="${t.name}">${ic(t.id === 'curve' ? 'road' : t.icon)}${t.id === 'curve' ? '<i class="cv">~</i>' : ''}<span class="cs-kbd k">${t.key}</span></button>`);
+      b.onclick = () => g.tools.set(t.id, t.id === 'zone' ? 1 : 0); this.toolsEl.appendChild(b); });
+    // всплывающие подсказки для кнопок с data-tip
+    this.root.addEventListener('pointerover', e => { const el = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null; if (!el) { this.tip.hidden = true; return; } const r = el.getBoundingClientRect(); this.tip.textContent = el.dataset.tip!; this.tip.hidden = false; const tw = this.tip.offsetWidth; const below = r.top < 120; this.tip.classList.toggle('below', below); this.tip.style.left = Math.max(6, Math.min(innerWidth - tw - 6, r.left + r.width / 2 - tw / 2)) + 'px'; this.tip.style.top = (below ? r.bottom + 10 : r.top - 44) + 'px'; });
+    this.root.addEventListener('pointerout', e => { if (!(e.relatedTarget as HTMLElement)?.closest?.('[data-tip]')) this.tip.hidden = true; });
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
       const t = TOOLS.find(t => t.key === e.key); if (t && !e.ctrlKey) { g.tools.set(t.id, t.id === 'zone' ? 1 : 0); return; }
+      if ((e.key === 'u' || e.key === 'U' || e.key === 'г' || e.key === 'Г') && !e.ctrlKey) { g.r.metroManual = !g.r.metroManual; g.tools.set(g.tools.tool, g.tools.sub); this.toast?.(g.r.metroManual ? 'Режим метро: вкл' : 'Режим метро: выкл'); }
       if (e.code === 'Space') { e.preventDefault(); this.setSpeed(g.speed ? 0 : 1); }
       if (e.key === 'Tab') { e.preventDefault(); const t2 = TOOLS.find(t => t.id === g.tools.tool); if (t2?.subs) g.tools.set(t2.id, (g.tools.sub + 1) % t2.subs.length); }
       if (e.key === 'F5') { e.preventDefault(); this.quickSave(); }
@@ -72,38 +84,44 @@ export class UI {
   hintT = 0; hintS = '';
   cursorHint(s: string) { this.hintS = s; this.hintSetT = performance.now(); }
   hintSetT = 0;
-  setSpeed(i: number) { this.g.speed = i; this.top.querySelectorAll('#speeds button').forEach((b, k) => b.classList.toggle('on', k === i)); }
+  setSpeed(i: number) { this.g.speed = i; this.top.querySelectorAll('#speeds button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === i))); }
   setOverlay(o: Overlay) {
-    this.g.r.overlay = o; (this.top.querySelector('#overlay') as HTMLSelectElement).value = o; this.g.r.refreshAll();
+    this.g.r.overlay = o; this.layers.querySelectorAll('[data-o]').forEach(r => r.classList.toggle('cs-chip--on', (r as HTMLElement).dataset.o === o)); (this.top.querySelector('#layers-btn') as HTMLElement).setAttribute('aria-pressed', String(o !== 'none')); this.g.r.refreshAll();
     const L: Record<string, string> = { traffic: '🟩 свободно → 🟨 → 🟥 пробка', land: '🟥 дешёвая → 🟩 дорогая земля', pollution: '🟩 чисто → 🟥 грязно', transit: 'голубой — зона пешей доступности остановок', resources: '🌲 лес · 🟫 руда · ⬛ нефть · 🟨 плодородная', zones: '🟩 жилая · 🟦 коммерческая · 🟨 промышленная', territory: '🟦 ваши подрегионы · 🟧 соседи (ИИ) · без цвета — свободные' };
     this.legend.style.display = o === 'none' ? 'none' : 'block'; this.legend.textContent = L[o] || '';
   }
   refreshTools() {
-    const g = this.g; this.toolsEl.querySelectorAll('button[data-t]').forEach(b => b.classList.toggle('on', (b as HTMLElement).dataset.t === g.tools.tool));
+    const g = this.g; this.toolsEl.querySelectorAll('button[data-t]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.t === g.tools.tool)));
     const t = TOOLS.find(t => t.id === g.tools.tool)!;
-    if (!t.subs) { this.sub.style.display = 'none'; return; }
-    this.sub.style.display = 'flex'; this.sub.innerHTML = `<b>${t.name}</b>`;
-    t.subs.forEach((s, i) => { const b = h(`<button>${s}</button>`); b.classList.toggle('on', i === g.tools.sub); b.onclick = () => g.tools.set(t.id, i); this.sub.appendChild(b); });
-    const tips: Record<string, string> = { road: 'Клик — начало, клик — конец (цепочка продолжается). Ctrl — шаг угла 15°. Esc/ПКМ — отмена. Пересечения создаются автоматически, над водой — мост (дороже).', curve: 'Клик: начало → контрольная точка → конец.', zone: 'Протяните прямоугольник. Зонируются только участки у дорог.', terrain: 'Удерживайте ЛКМ. «Выровнять» — к высоте точки нажатия.', place: 'Клик по участку у дороги.', line: 'Кликайте остановки (автобус/трамвай — у дорог). Enter или двойной клик — открыть линию. Линия ходит туда-обратно.' };
-    this.sub.appendChild(h(`<div class="hint" style="max-width:220px">${tips[t.id] || ''}</div>`));
+    if (!t.subs) { this.sub.hidden = true; return; }
+    const tips: Record<string, string> = { road: 'Клик — начало, клик — конец (цепочка продолжается). Ctrl — шаг угла 15°. Esc/ПКМ — отмена. Над водой — мост. L — уровень (земля/эстакада/тоннель): разные уровни пересекаются без перекрёстка.', curve: 'Клик: начало → контрольная точка → конец.', zone: 'Протяните прямоугольник. Зонируются только участки у дорог.', terrain: 'Удерживайте ЛКМ. «Выровнять» — к высоте точки нажатия.', place: 'Клик по участку у дороги.', line: 'Кликайте остановки. Enter или двойной клик — открыть линию. Трамвай/метро/поезд — только по путям.', rail: 'Клик — начало, клик — конец (цепочка). L — уровень; метро по умолчанию в тоннеле. U — режим метро (рентген).' };
+    this.sub.hidden = false; this.sub.innerHTML = `<div class="cs-seg">${t.subs.map((s, i) => `<button aria-pressed="${i === g.tools.sub}" data-i="${i}">${s}</button>`).join('')}</div><div class="tip2">${tips[t.id] || ''} <span class="cs-kbd">Tab</span> — следующий</div>`;
+    this.sub.querySelectorAll('button[data-i]').forEach(b => (b as HTMLElement).onclick = () => g.tools.set(t.id, +(b as HTMLElement).dataset.i!));
+    if (t.id === 'road' || t.id === 'curve' || t.id === 'rail') { // этап C: уровень (L) и модули профиля
+      const T = g.tools; const row = h(`<div class="cs-subrow"><span class="cs-sublbl">Уровень <span class="cs-kbd">L</span></span><div class="cs-seg">${[-1, 0, 1].map(v => `<button data-lv="${v}" aria-pressed="${T.lv === v}">${LEVEL_NAMES[v + 1]}</button>`).join('')}</div><span class="cs-sublbl">Модули</span><div class="cs-seg"><button data-m="${MOD.TRAM}" aria-pressed="${!!(T.mods & MOD.TRAM)}" data-tip="Трамвайные пути в полосе (общий граф с рельсовой сетью)">Трамвай</button><button data-m="${MOD.BUS}" aria-pressed="${!!(T.mods & MOD.BUS)}" data-tip="Выделенная полоса для автобусов: без пробок для линий">Автобусная полоса</button></div></div>`);
+      this.sub.insertBefore(row, this.sub.querySelector('.tip2'));
+      row.querySelectorAll('button[data-lv]').forEach(b => (b as HTMLElement).onclick = () => { T.lv = +(b as HTMLElement).dataset.lv!; this.refreshTools(); });
+      row.querySelectorAll('button[data-m]').forEach(b => (b as HTMLElement).onclick = () => { T.mods ^= +(b as HTMLElement).dataset.m!; this.refreshTools(); });
+    }
   }
-  toast(text: string, lvl = 'warn') {
-    for (const o of [...this.notes.children]) if ((o as HTMLElement).textContent === text) o.remove();
-    const n = h(`<div class="note ${lvl}"></div>`); n.textContent = text; this.notes.prepend(n); setTimeout(() => n.remove(), 12000);
+  toast(text: string, lvl = 'warn') { // UI_AUDIT п.7: .cs-toast снизу справа, иконка уровня, авто-скрытие 6 с
+    for (const o of [...this.notes.children]) if ((o as HTMLElement).dataset.text === text) o.remove();
+    const I: Record<string, [string, string]> = { bad: ['alert', 'var(--neg)'], good: ['sparkle', 'var(--pos)'], warn: ['bell', 'var(--warn)'], info: ['bell', 'var(--info)'] }; const [icn, col] = I[lvl] || I.warn;
+    const n = h(`<div class="cs-glass cs-toast"><div class="cs-toast__icon" style="color:${col};background:color-mix(in srgb, ${col} 18%, transparent)">${ic(icn)}</div><div class="cs-toast__text" style="color:var(--text)"></div></div>`); n.dataset.text = text; (n.querySelector('.cs-toast__text') as HTMLElement).textContent = text; this.notes.prepend(n);
     while (this.notes.children.length > 3) this.notes.lastElementChild!.remove();
-    setTimeout(() => { n.style.transition = 'opacity .6s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 700); }, 7000);
+    setTimeout(() => { n.style.transition = 'opacity .5s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 550); }, 6000);
   }
-  open(p: string) { this.panel = this.panel === p ? '' : p; this.top.querySelectorAll('button[data-p]').forEach(b => b.classList.toggle('on', (b as HTMLElement).dataset.p === this.panel)); this.right.style.display = this.panel ? 'block' : 'none'; this.renderPanel(true); }
+  open(p: string) { this.panel = this.panel === p ? '' : p; this.top.querySelectorAll('button[data-p]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.p === this.panel))); this.right.style.display = this.panel ? 'block' : 'none'; this.layers.classList.toggle('shift', !!this.panel); this.notes.classList.toggle('shift', !!this.panel); this.renderPanel(true); }
   frame() {
     const now = performance.now();
     this.hint.style.display = now - this.hintSetT < 200 ? 'block' : 'none'; this.hint.textContent = this.hintS;
     if (now - this.lastUpd < 400) return; this.lastUpd = now;
     const g = this.g, e = g.eco; const y = e.yesterday;
     const inc = y.tR + y.tC + y.tI + y.fares + y.tariff, exp = y.roads + y.transit + y.services + y.interest;
-    (this.top.querySelector('#money') as HTMLElement).textContent = fmtMoney(e.money); (this.top.querySelector('#money') as HTMLElement).style.color = e.money < 0 ? '#ff7060' : '';
-    const dl = this.top.querySelector('#delta') as HTMLElement; dl.textContent = (inc - exp >= 0 ? '+' : '') + fmtMoney(inc - exp) + '/день'; dl.style.color = inc - exp >= 0 ? '#7fe08f' : '#ff8070';
+    (this.top.querySelector('#money') as HTMLElement).textContent = fmtMoney(e.money); (this.top.querySelector('#money') as HTMLElement).style.color = e.money < 0 ? 'var(--neg)' : 'var(--money)';
+    const dl = this.top.querySelector('#delta') as HTMLElement; dl.textContent = (inc - exp >= 0 ? '+' : '') + fmtMoney(inc - exp) + '/день'; dl.className = 'cs-delta ' + (inc - exp >= 0 ? 'cs-delta--up' : 'cs-delta--down');
     (this.top.querySelector('#pop') as HTMLElement).textContent = fmtNum(e.cities.reduce((s, c) => s + c.pop, 0));
-    const hr = e.hour; (this.top.querySelector('#date') as HTMLElement).textContent = `День ${e.day}`; (this.top.querySelector('#clock') as HTMLElement).textContent = `${String(Math.floor(hr)).padStart(2, '0')}:${String(Math.floor((hr % 1) * 60)).padStart(2, '0')} · ${Math.round(g.fps)} FPS · авто ${g.traffic.active}`;
+    const hr = e.hour; (this.top.querySelector('#date') as HTMLElement).textContent = `День ${e.day}`; (this.top.querySelector('#clock') as HTMLElement).textContent = `${String(Math.floor(hr)).padStart(2, '0')}:${String(Math.floor((hr % 1) * 60)).padStart(2, '0')} · ${Math.round(g.fps)} FPS`;
     if (this.panel) this.renderPanel(false);
     if (now - this.miniT > 3000) { this.miniT = now; this.drawMini(); } else this.drawMiniCam();
   }
@@ -123,7 +141,27 @@ export class UI {
     c.fillStyle = '#fff'; c.font = '9px sans-serif'; for (const ci of w.cities) c.fillText(ci.name, ci.x * s - 15, ci.z * s);
   }
   // ---------- panels ----------
-  renderPanel(force: boolean) {
+  /** этап E (mechanics/15 §6): профиль загрузки перегонов (туда/обратно), посадки/высадки, расписание, автоподбор */
+  lineLoadHtml(l: any) {
+    if (!l.segFwd || !l.board) return '';
+    const T = LINE_TYPES[l.type]; const hw = this.g.transit.headwayMin(l); const cap = 60 / hw * T.cap;
+    const col = (v: number) => v < 0.6 ? '#5c6' : v < 0.9 ? '#eb4' : v < 1.2 ? '#e55' : '#8b1a2b';
+    const bars = (a: number[], f: (v: number) => number, c: (v: number) => string, tt: (v: number, i: number) => string) => `<span style="display:inline-flex;align-items:flex-end;gap:1px;height:26px;vertical-align:bottom">${a.map((v, i) => `<span title="${tt(v, i)}" style="width:7px;height:${Math.max(1, Math.min(26, f(v) * 26)).toFixed(0)}px;background:${c(v)}"></span>`).join('')}</span>`;
+    const mb = Math.max(1, ...l.board, ...l.alight); const ld = (v: number) => v / cap;
+    const sch = schedule(l.cycleMin || 0, l.n).map(p => `${({ amPeak: 'утро', day: 'день', pmPeak: 'вечер-пик', evening: 'вечер', night: 'ночь' } as any)[p.period]} ${p.headwayMin ? p.headwayMin.toFixed(0) + ' мин/' + p.vehicles + ' ТС' : '—'}`).join(' · ');
+    return `<div class="hint" style="margin-top:4px">Оборот ${(l.cycleMin || 0).toFixed(0)} мин · ёмкость ${fmtNum(cap)} пасс/ч · макс. загрузка <b style="color:${col(l.maxLoad || 0)}">${((l.maxLoad || 0) * 100).toFixed(0)}%</b>${(l.maxLoad || 0) > 1 ? ' — переполнение, часть пассажиров уходит' : ''}${l.spacingWarn ? ` · ⚠ шаг остановок вне нормы: ${l.spacingWarn}` : ''}<br>
+      Загрузка перегонов (пик): туда ${bars(l.segFwd, ld, v => col(ld(v)), (v, i) => `${i + 1}→${i + 2}: ${Math.round(v)} пасс/ч (${Math.round(ld(v) * 100)}%)`)} обратно ${bars(l.segBack, ld, v => col(ld(v)), (v, i) => `${i + 2}→${i + 1}: ${Math.round(v)} пасс/ч (${Math.round(ld(v) * 100)}%)`)}<br>
+      Посадки/высадки за день: ${bars(l.board, v => v / mb, () => '#4a9de0', (v, i) => `ост. ${i + 1}: вошли ${Math.round(v)}`)} ${bars(l.alight, v => v / mb, () => '#d07a3a', (v, i) => `ост. ${i + 1}: вышли ${Math.round(v)}`)}<br>
+      Расписание: ${sch} · <button data-auto="${l.id}">${l.autoVehicles ? '✔ автоподбор ТС' : 'автоподбор ТС'}</button></div>`;
+  }
+  renderPanel(force: boolean) { this.renderPanel0(force); this.decoratePanel(); }
+  decoratePanel() { // UI_AUDIT п.5: шапка .cs-panel__head (иконка + Manrope + закрыть), тело .cs-panel__body
+    const R = this.right; const h3 = R.querySelector(':scope > h3'); if (!h3) return; const title = (h3.textContent || '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
+    const body = document.createElement('div'); body.className = 'cs-panel__body'; while (h3.nextSibling) body.appendChild(h3.nextSibling);
+    const head = h(`<div class="cs-panel__head">${ic(PANEL_IC[this.panel] || 'sparkle')}<span>${title}</span><button class="cs-btn cs-btn--icon x" data-tip="Закрыть">${ic('x')}</button></div>`); h3.replaceWith(head); R.appendChild(body); (head.querySelector('.x') as HTMLElement).onclick = () => this.open(this.panel);
+    R.querySelectorAll('button:not(.cs-btn)').forEach(b => b.classList.add('cs-btn')); R.querySelectorAll('button.on').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'true'); });
+  }
+  renderPanel0(force: boolean) {
     const ae = document.activeElement; if (!force && ae && this.right.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) return;
     const g = this.g, e = g.eco; const R = this.right; const p = this.panel;
     if (p === 'eco') {
@@ -150,17 +188,18 @@ export class UI {
       const t = g.traffic; const avg = t.stats.trips ? t.stats.tripTime / Math.max(1, t.stats.freeTime) : 1;
       R.innerHTML = `<h3>🚦 Транспорт</h3><table>
         <tr><td>Активных машин (агентов)</td><td>${t.active} / ${t.cap}</td></tr><tr><td>Один агент = людей/поездок</td><td>${t.scale.toFixed(1)}</td></tr>
-        <tr><td>Поездок завершено</td><td>${fmtNum(t.stats.trips)}</td></tr><tr><td>Время в пути / свободное</td><td>×${avg.toFixed(2)}</td></tr><tr><td>Застряли и убраны</td><td>${t.stats.despawned}</td></tr>
+        <tr><td>Поездок завершено</td><td>${fmtNum(t.stats.trips)}</td></tr><tr><td>Время в пути / свободное</td><td>×${avg.toFixed(2)}</td></tr><tr><td>Застряли и убраны</td><td>${t.stats.despawned}</td></tr><tr><td>Объехали затор</td><td>${t.stats.rerouted}</td></tr>
         <tr><td>Пассажиров ОТ в день</td><td>${fmtNum(g.transit.lines.reduce((s, l) => s + l.riders, 0))}</td></tr></table>
         <h4>Пробки по городам</h4><table>${e.cities.map(c => `<tr><td>${c.name}</td><td>${bar(c.cong / 1.5, c.cong > 0.8 ? '#e55' : c.cong > 0.4 ? '#eb4' : '#5c6')} ×${(1 + c.cong).toFixed(2)} · авто ${(c.carShare * 100).toFixed(0)}%</td></tr>`).join('')}</table>
         <h4>Линии общественного транспорта</h4>
         ${g.transit.lines.map(l => `<div class="panel" style="padding:6px;margin:4px 0;border-left:5px solid #${l.color.toString(16).padStart(6, '0')}"><b>${l.name}</b> · ${(l.L / 2000).toFixed(1)} км · ${l.stops.length} ост.<br>
           Пассажиров: <b>${fmtNum(l.riders)}</b>/день · интервал ${g.transit.headwayMin(l).toFixed(1)} мин · доход ${fmtMoney(l.revenue - l.n * LINE_TYPES[l.type].upkeep)}/день ${l.cargo ? '· 🚚 грузы' : ''}<br>
           Составов: <button data-l="${l.id}" data-d="-1">−</button> <b>${l.n}</b> <button data-l="${l.id}" data-d="1">+</button> (${fmtMoney(LINE_TYPES[l.type].vehCost)})
-          · Тариф: <button data-f="${l.id}" data-d="-5">−</button> ${l.fare} ₽ <button data-f="${l.id}" data-d="5">+</button> <button data-x="${l.id}">✖</button></div>`).join('') || '<div class="hint">Нет линий. Инструмент «Линии транспорта» (8).</div>'}
+          · Тариф: <button data-f="${l.id}" data-d="-5">−</button> ${l.fare} ₽ <button data-f="${l.id}" data-d="5">+</button> <button data-x="${l.id}">✖</button>${this.lineLoadHtml(l)}</div>`).join('') || '<div class="hint">Нет линий. Инструмент «Линии транспорта» (8).</div>'}
         <div class="hint">Жители выбирают способ поездки по времени (пешком до остановки + ожидание + в пути), цене (тариф vs топливо и парковка) и комфорту. Чем больше людей в ОТ — тем меньше машин и пробок. Остановки повышают стоимость земли.</div>`;
       R.querySelectorAll('button[data-l]').forEach(b => (b as HTMLElement).onclick = () => { const l = g.transit.lines.find(l => l.id === +(b as HTMLElement).dataset.l!)!; const d = +(b as HTMLElement).dataset.d!; if (d > 0) { if (e.money < LINE_TYPES[l.type].vehCost) return this.toast('Недостаточно средств', 'bad'); e.spend(LINE_TYPES[l.type].vehCost); } g.exec({ a: 'lineVeh', id: l.id, d }); this.renderPanel(true); });
       R.querySelectorAll('button[data-f]').forEach(b => (b as HTMLElement).onclick = () => { const l = g.transit.lines.find(l => l.id === +(b as HTMLElement).dataset.f!)!; g.exec({ a: 'lineFare', id: l.id, d: +(b as HTMLElement).dataset.d! }); this.renderPanel(true); });
+      R.querySelectorAll('button[data-auto]').forEach(b => (b as HTMLElement).onclick = () => { const l = g.transit.lines.find(l => l.id === +(b as HTMLElement).dataset.auto!)!; g.exec({ a: 'lineAuto', id: l.id, on: !l.autoVehicles }); this.renderPanel(true); });
       R.querySelectorAll('button[data-x]').forEach(b => (b as HTMLElement).onclick = () => { g.exec({ a: 'lineDel', id: +(b as HTMLElement).dataset.x! }); this.renderPanel(true); });
     } else if (p === 'cities') {
       R.innerHTML = `<h3>🏙 Города региона</h3>` + e.cities.map((c, i) => { const ci = g.world.cities[i]; return `<div class="panel" style="padding:8px;margin:6px 0">
@@ -242,14 +281,14 @@ export class UI {
     const ci = w.cityOf[k] ? w.cityOf[k] - 1 : w.nearestCity(p.x, p.z, 1.5); const city = ci >= 0 ? g.eco.cities[ci] : null;
     const ne = w.net.nearestEdge(p.x, p.z, 10);
     const zn = ['нет', 'жилая', 'коммерческая', 'промышленная'][w.zone[k]]; const st = ['', ' (трущобы)', ' (панельный спальный район)', ' (исторический центр)'][w.style[k]];
-    let html = `<b>Участок ${i},${j}</b> ${city ? '· ' + city.name : ''}<table>
+    let html = `<div class="cs-panel__head">${ic('zone')}<span>Участок ${i},${j} ${city ? '· ' + city.name : ''}</span></div><div class="cs-panel__body"><table>
       <tr><td>Высота</td><td>${w.tileH(i, j).toFixed(1)} м</td></tr><tr><td>Ресурс</td><td>${RES_NAMES[w.resource[k]]}</td></tr><tr><td>Зона</td><td>${zn}</td></tr>
       <tr><td>Здание</td><td>${w.bld[k] ? KIND_NAMES[w.kind[k]] + st + ', ур. ' + w.bld[k] : '—'}</td></tr>
       ${w.kind[k] === K.RES ? `<tr><td>Жителей</td><td>≈${Math.round(w.bld[k] * 10 * (city?.occ ?? 1))}</td></tr>` : ''}
       <tr><td>Стоимость земли</td><td>${w.tileLV(k).toFixed(2)}</td></tr><tr><td>Загрязнение</td><td>${w.coarse(w.pollution, p.x, p.z).toFixed(2)}</td></tr><tr><td>Доступ ОТ</td><td>${(w.coarse(w.transitCov, p.x, p.z) * 100).toFixed(0)}%</td></tr>`;
     if (ne) { const E = w.net.edges[ne.e]; html += `<tr><td>Дорога</td><td>${ROAD_TYPES[E.type].name}, ${E.len.toFixed(0)} м</td></tr><tr><td>Загрузка</td><td>${(g.traffic.edgeLoad(ne.e) * 100).toFixed(0)}%</td></tr>`; }
-    html += '</table><button id="closeinfo">Закрыть</button>';
-    this.info.innerHTML = html; this.info.style.display = 'block'; (this.info.querySelector('#closeinfo') as HTMLElement).onclick = () => this.info.style.display = 'none';
+    html += '</table><button id="closeinfo" class="cs-btn">Закрыть</button>';
+    this.info.innerHTML = html + '</div>'; this.info.style.display = 'block'; (this.info.querySelector('#closeinfo') as HTMLElement).onclick = () => this.info.style.display = 'none';
   }
 }
 function bar(v: number, col: string) { return `<span style="display:inline-block;width:70px;height:8px;background:#223;border-radius:4px;vertical-align:middle"><span style="display:block;height:100%;width:${clamp(v, 0, 1) * 100}%;background:${col};border-radius:4px"></span></span>`; }

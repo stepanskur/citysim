@@ -507,6 +507,380 @@
     },
     "seasonLengthDays": 28
   },
+  "roads": {
+    "classes": {
+      "highway": {
+        "speed": 28,
+        "minLanes": 1,
+        "maxLanes": 4,
+        "baseCostPerM": 260,
+        "upkeepPerM": 1,
+        "laneCapacityPerHour": 2000,
+        "minRadius": 450,
+        "maxGrade": 0.05,
+        "clearance": 5,
+        "tunnelMinCover": 4,
+        "noiseL0": 75,
+        "pollutionPerVehKm": 1,
+        "frontage": false
+      },
+      "ramp": {
+        "speed": 15,
+        "minLanes": 1,
+        "maxLanes": 1,
+        "baseCostPerM": 180,
+        "upkeepPerM": 0.7,
+        "laneCapacityPerHour": 1800,
+        "minRadius": 110,
+        "maxGrade": 0.07,
+        "clearance": 5,
+        "tunnelMinCover": 4,
+        "noiseL0": 70,
+        "pollutionPerVehKm": 1,
+        "frontage": false
+      },
+      "street": {
+        "speed": 13,
+        "minLanes": 1,
+        "maxLanes": 3,
+        "baseCostPerM": 60,
+        "upkeepPerM": 0.25,
+        "laneCapacityPerHour": 700,
+        "minRadius": 90,
+        "maxGrade": 0.08,
+        "clearance": 4.5,
+        "tunnelMinCover": 3,
+        "noiseL0": 68,
+        "pollutionPerVehKm": 0.8,
+        "frontage": true
+      },
+      "lane": {
+        "speed": 8,
+        "minLanes": 1,
+        "maxLanes": 1,
+        "baseCostPerM": 35,
+        "upkeepPerM": 0.15,
+        "laneCapacityPerHour": 400,
+        "minRadius": 30,
+        "maxGrade": 0.12,
+        "clearance": 4,
+        "tunnelMinCover": 3,
+        "noiseL0": 60,
+        "pollutionPerVehKm": 0.6,
+        "frontage": true
+      }
+    },
+    "modules": {
+      "car": {
+        "width": 3.5,
+        "costPerM": 0,
+        "upkeepPerM": 0,
+        "capacityMult": 1
+      },
+      "bus": {
+        "width": 3.5,
+        "costPerM": 20,
+        "upkeepPerM": 0.05,
+        "capacityMult": 1
+      },
+      "tramShared": {
+        "width": 3.5,
+        "costPerM": 35,
+        "upkeepPerM": 0.1,
+        "capacityMult": 0.8
+      },
+      "tramDedicated": {
+        "width": 3.2,
+        "costPerM": 45,
+        "upkeepPerM": 0.12,
+        "capacityMult": 1
+      },
+      "bike": {
+        "width": 2,
+        "costPerM": 12,
+        "upkeepPerM": 0.03,
+        "capacityMult": 1
+      },
+      "sidewalk": {
+        "width": 2,
+        "costPerM": 6,
+        "upkeepPerM": 0.02,
+        "capacityMult": 1
+      },
+      "pedestrian": {
+        "width": 3,
+        "costPerM": 25,
+        "upkeepPerM": 0.04,
+        "capacityMult": 0
+      },
+      "trees": {
+        "width": 1.5,
+        "costPerM": 8,
+        "upkeepPerM": 0.03,
+        "capacityMult": 1
+      },
+      "median": {
+        "width": 2,
+        "costPerM": 5,
+        "upkeepPerM": 0.01,
+        "capacityMult": 1.05
+      },
+      "parking": {
+        "width": 2.5,
+        "costPerM": 4,
+        "upkeepPerM": 0.01,
+        "capacityMult": 0.9
+      },
+      "noiseWall": {
+        "width": 0.5,
+        "costPerM": 30,
+        "upkeepPerM": 0.02,
+        "capacityMult": 1
+      }
+    },
+    "maxLanesPerDir": 4,
+    "rampMinLen": 120,
+    "rampMinSpacing": 400,
+    "embankmentPerM": 0.08,
+    "bridgeBase": 3,
+    "bridgePerM": 0.1,
+    "tunnelBase": 6,
+    "tunnelPerM": 0.05,
+    "bridgeUpkeepMult": 2,
+    "tunnelUpkeepMult": 3,
+    "pierSpacing": 40,
+    "pierSpacingWater": 60,
+    "segMinLen": 8,
+    "segMaxLen": 400,
+    "chordError": 0.5,
+    "minRadiusSoftShare": 0.5,
+    "upgradeRefund": 0.7,
+    "demolishShare": 0.2,
+    "signalCycleSec": 90,
+    "autoSignalFlow": 1200,
+    "noiseThresholdDb": 65,
+    "noiseLandValuePenalty": 0.1
+  },
+  "congestion": {
+    "levelVC": {
+      "dense": 0.6,
+      "jam": 0.9,
+      "gridlock": 1.2
+    },
+    "levelColors": {
+      "free": "#3cb043",
+      "dense": "#f2c230",
+      "jam": "#e04848",
+      "gridlock": "#7a1020"
+    },
+    "gapCriticalSec": 6.5,
+    "gapFollowSec": 3.5,
+    "analysisPeriodH": 0.25,
+    "saturationFlowPerLane": 1800,
+    "lostTimePerPhaseSec": 4,
+    "roundaboutA": 1400,
+    "roundaboutB": 0.7,
+    "roundaboutMinCap": 200,
+    "stopAllExtraSec": 4,
+    "mergeFactor": 0.8,
+    "taperFactor": 0.95,
+    "leftTurnPenaltySec": 6,
+    "maxNodeDelaySec": 600,
+    "awareShare": 0.35,
+    "rerouteThreshold": 0.1,
+    "rerouteMinGainMin": 2,
+    "hysteresisShare": 0.5,
+    "costSmoothing": 0.5,
+    "agentRerouteTicks": 30,
+    "agentRerouteWaitMin": 3,
+    "agentRerouteRadius": 2000,
+    "vehSpacing": 7,
+    "spillMinCap": 0.2,
+    "spillMaxHops": 4,
+    "accidentRatePerMVehKm": 0.8,
+    "accidentDurationMin": 45,
+    "accidentDurationSpreadMin": 30,
+    "incidentCapacity": 0.5,
+    "dirtyThreshold": 0.1,
+    "dirtyHops": 2,
+    "nodeRecalcMinVC": 0.5
+  },
+  "netgen": {
+    "parallelMin": {
+      "lane": 40,
+      "street": 56,
+      "avenue": 80,
+      "highway": 200
+    },
+    "junctionSpacing": {
+      "lane": 30,
+      "street": 50,
+      "avenue": 120
+    },
+    "minAngleDeg": {
+      "lane": 30,
+      "street": 35,
+      "avenue": 45,
+      "highway": 15
+    },
+    "highwayResSetback": 30,
+    "highwayResSetbackWithWall": 15,
+    "blockMin": 90,
+    "blockMax": 320,
+    "blockExp": 1.5,
+    "arterialSpacing": 800,
+    "arterialMaxReach": 600,
+    "repairMaxLen": 1500,
+    "minIslandEdges": 6,
+    "repairMaxPasses": 8,
+    "deadEndMax": 300,
+    "accessDist": 24,
+    "freightMaxGrade": 0.06,
+    "lots": {
+      "lane": {
+        "depthTiles": 2,
+        "maxLevelShare": 0.4,
+        "comDemandMult": 0.8
+      },
+      "street": {
+        "depthTiles": 2,
+        "maxLevelShare": 1,
+        "comDemandMult": 1
+      },
+      "avenue": {
+        "depthTiles": 3,
+        "maxLevelShare": 1,
+        "comDemandMult": 1.25
+      },
+      "pedestrian": {
+        "depthTiles": 2,
+        "maxLevelShare": 0.8,
+        "comDemandMult": 1.3
+      }
+    },
+    "noAccessDecayDays": 10
+  },
+  "rail": {
+    "systems": {
+      "tram": {
+        "minRadius": 25,
+        "maxGrade": 0.06,
+        "minHeadwayMin": 2,
+        "dwellMin": 0.5,
+        "trackUpkeepPerKmMonth": 350,
+        "depotCost": 80000,
+        "depotCapacity": 10,
+        "stationCapacityPerHour": 3000,
+        "platformLen": 30
+      },
+      "metro": {
+        "minRadius": 200,
+        "maxGrade": 0.04,
+        "minHeadwayMin": 2,
+        "dwellMin": 0.5,
+        "trackUpkeepPerKmMonth": 2170,
+        "depotCost": 1200000,
+        "depotCapacity": 20,
+        "stationCapacityPerHour": 25000,
+        "platformLen": 120
+      },
+      "rail": {
+        "minRadius": 600,
+        "maxGrade": 0.025,
+        "minHeadwayMin": 3,
+        "dwellMin": 1.5,
+        "trackUpkeepPerKmMonth": 920,
+        "depotCost": 900000,
+        "depotCapacity": 15,
+        "stationCapacityPerHour": 15000,
+        "platformLen": 250
+      }
+    },
+    "turnbackMin": 2,
+    "singleTrackCostMult": 0.6,
+    "singleTrackCapMult": 0.33,
+    "crossoverCost": 5000,
+    "stationExtraTrackCost": 25000,
+    "freightTerminalCost": 150000,
+    "freightTerminalTrainsDay": 40,
+    "levelCrossingDelaySec": 120,
+    "levelCrossingCapLossPerTrain": 0.02,
+    "metroBaseDepth": 10,
+    "metroDepthCostPerM": 0.02,
+    "metroStationDepthCostPerM": 0.03,
+    "metroRiverMinDepth": 20,
+    "tunnelVerticalSep": 6,
+    "tunnelPlanSep": 10,
+    "accessDepthPerMin": 20,
+    "elevatedMetroCostMult": 0.6,
+    "elevatedMetroNoiseL0": 72,
+    "undergroundSurfaceOpacity": 0.15,
+    "undergroundCameraMinY": -80,
+    "stationOverloadMin": 5,
+    "transferMaxWalk": 200,
+    "sharedStationTransferMin": 3,
+    "busTransferMin": 4,
+    "mergeStationCostShare": 0.3,
+    "parkRideSpaces": 200,
+    "parkRideCost": 50000,
+    "oldVehicleUpkeepMult": 1.5,
+    "oldVehicleBreakdownDaily": 0.01
+  },
+  "lines": {
+    "stopSpacingMin": [
+      250,
+      250,
+      600,
+      1500
+    ],
+    "stopSpacingMax": [
+      800,
+      800,
+      2000,
+      15000
+    ],
+    "periods": {
+      "amPeak": {
+        "from": 7,
+        "to": 10,
+        "tripShare": 0.3,
+        "headwayMult": 1
+      },
+      "day": {
+        "from": 10,
+        "to": 17,
+        "tripShare": 0.3,
+        "headwayMult": 1.5
+      },
+      "pmPeak": {
+        "from": 17,
+        "to": 20,
+        "tripShare": 0.27,
+        "headwayMult": 1
+      },
+      "evening": {
+        "from": 20,
+        "to": 24,
+        "tripShare": 0.1,
+        "headwayMult": 2
+      },
+      "night": {
+        "from": 0,
+        "to": 7,
+        "tripShare": 0.03,
+        "headwayMult": 4
+      }
+    },
+    "dwellMin": 0.5,
+    "idleUpkeepShare": 0.3,
+    "targetLoad": 0.8,
+    "autoMaxDailyChange": 0.2,
+    "maxAutoUpkeepShare": 0.2,
+    "vehicleResaleShare": 0.5,
+    "unprofitableOpRatio": 0.5,
+    "unprofitableMonths": 3,
+    "deadStopDays": 30
+  },
   "alerts": {
     "congestionVC": 0.9,
     "goodsShortage": 0.15,

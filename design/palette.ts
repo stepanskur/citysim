@@ -136,5 +136,31 @@ export const SIGNAL = {
   phase: { green: 18, yellow: 3, allRed: 1 },
 };
 
-export const PALETTE = { BRAND, WORLD, TERRAIN, SEASONS, ROADS, BUILD, VEHICLES, TREES, HEATMAPS, UI, GROUND, ROAD_SPEC, SIGNAL };
+
+/** v4: темы зданий. Цвета — только отсюда (models/themes/*). */
+export const THEMES = {
+  base: { label: 'Базовая «Пастила»' },
+  lateSng: {
+    label: 'Позднее СНГ',
+    panels: [0xe9dcc4, 0xc9d3dc, 0xe8cf8e, 0xd9d5cc, 0xf0e6d6, 0xbfd0d8],   // бежевая, серо-голубая, охра, серая, молочная, голубая
+    seams: [0xd25b4a, 0x3f7fbf, 0x4f9a6a, 0xe0a030, 0x8f86b8, 0xc8c2b6],  // заделанные швы (разноцветные)
+    roof: 0x55586a, parapet: 0xb8b2a8, plinth: 0x8a8580, glass: 0x7e9ab8, frame: 0xf4f1ea,
+    loggiaGlaze: [0xbfd8e4, 0xd6e6d0, 0xe8e0c8, 0xf4f1ea], door: 0x6a5040, canopy: 0xcfc8bc, shopGlass: 0x6fa8c8, sign: [0xd8402f, 0x1f7fbf, 0x2f9a5a],
+  },
+  russianClassic: {
+    label: 'Российская классика',
+    walls: [0xe8b85a, 0xc8684a, 0xf2e2a0, 0xd8e8cc, 0xecc8a2, 0xb5503f, 0xf0d2b0], // охра, терракот, бледно-жёлтый, бело-зелёный, персик, кирпич, беж
+    trim: 0xfff8ee, roofs: [0x5f8f6a, 0x8a929c, 0x4f7a5a, 0xa04a3a, 0x7a8590], plinth: 0xa89a8a,
+    glass: 0x5f7a96, door: 0x5a3a2e, gate: 0x2b2f45, dome: 0x5f8f6a,
+  },
+  french: {
+    label: 'Париж (Осман)',
+    stone: [0xf1e6cf, 0xeadcc0, 0xf5ecda, 0xe6d6b8], zinc: 0x7f8a96, zincDark: 0x5f6a76, iron: 0x2b2f45,
+    awnings: [0xb5303a, 0x1f5f4a, 0x2b3f6a, 0xe6c14a, 0x8a2f4a], chimney: 0xc98a6a, pot: 0xb5603f, glass: 0x6d8aa8, shop: [0x1f3f4a, 0x5a2a2a, 0x2b2f45, 0x3f5a3a],
+  },
+  /** Детали, общие для всех тем. */
+  details: { downpipe: 0x8a929c, ac: 0xeef0f2, acGrille: 0x9aa2ae, vent: 0xb8b0b8, antenna: 0x6a7080, dish: 0xf4f4f0, fireEscape: 0x3a3f5a },
+};
+
+export const PALETTE = { BRAND, WORLD, TERRAIN, SEASONS, ROADS, BUILD, VEHICLES, TREES, HEATMAPS, UI, GROUND, ROAD_SPEC, SIGNAL, THEMES };
 export default PALETTE;

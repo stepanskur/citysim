@@ -6,6 +6,87 @@
  * Индексы массивов дорог/линий совпадают с ROAD_TYPES (src/world/RoadNet.ts) и LINE_TYPES (src/sim/Transit.ts).
  */
 
+export interface RoadSystemConsts {
+  /** классы дорог: скорость м/с, полос/направление (мин/макс), база ₽/м, содержание ₽/м/мес (до roadUpkeepMult), ёмкость полосы авт/ч, мин. радиус м, макс. уклон доля, просвет м, мин. покрытие тоннеля м, шум L0 дБ, загрязнение отн. */
+  classes: Record<'highway' | 'ramp' | 'street' | 'lane', { speed: number; minLanes: number; maxLanes: number; baseCostPerM: number; upkeepPerM: number; laneCapacityPerHour: number; minRadius: number; maxGrade: number; clearance: number; tunnelMinCover: number; noiseL0: number; pollutionPerVehKm: number; frontage: boolean }>;
+  /** модули полос: ширина м, цена ₽/м, содержание ₽/м/мес, множитель ёмкости соседних авто-полос */
+  modules: Record<string, { width: number; costPerM: number; upkeepPerM: number; capacityMult: number }>;
+  /** макс. полос car/bus в одну сторону */ maxLanesPerDir: number;
+  /** съезды: мин. длина ramp, мин. шаг между съездами, м */ rampMinLen: number; rampMinSpacing: number;
+  /** уровни: множители стройки и содержания */ embankmentPerM: number; bridgeBase: number; bridgePerM: number; tunnelBase: number; tunnelPerM: number; bridgeUpkeepMult: number; tunnelUpkeepMult: number;
+  /** шаг опор моста по суше/воде, м */ pierSpacing: number; pierSpacingWater: number;
+  /** кривые: длина сегмента мин/макс м, ошибка хорды м, допуск радиуса ниже минимума (доля) */ segMinLen: number; segMaxLen: number; chordError: number; minRadiusSoftShare: number;
+  /** апгрейд: доля возврата цены старого профиля; снос — доля цены */ upgradeRefund: number; demolishShare: number;
+  /** светофор: цикл с; порог потока для автоматического светофора, авт/ч */ signalCycleSec: number; autoSignalFlow: number;
+  /** шум: порог у фасада дБ и штраф к стоимости земли */ noiseThresholdDb: number; noiseLandValuePenalty: number;
+}
+
+export interface CongestionConsts {
+  /** пороги уровней V/C: dense, jam, gridlock */ levelVC: { dense: number; jam: number; gridlock: number };
+  /** цвета оверлея по уровням (hex) */ levelColors: { free: string; dense: string; jam: string; gridlock: string };
+  /** приоритетный узел: критический интервал и интервал следования, с */ gapCriticalSec: number; gapFollowSec: number;
+  /** период анализа перегрузочной части HCM, ч */ analysisPeriodH: number;
+  /** насыщение светофора, авт/ч на полосу; потерянное время на фазу, с */ saturationFlowPerLane: number; lostTimePerPhaseSec: number;
+  /** кольцо: c = a − b·V_circ, мин. ёмкость */ roundaboutA: number; roundaboutB: number; roundaboutMinCap: number;
+  /** stopAll: доп. задержка, с */ stopAllExtraSec: number;
+  /** слияние: доля потока ramp, съедающая ёмкость шоссе; сужение — коэф. */ mergeFactor: number; taperFactor: number;
+  /** штраф левого поворота, с на 1000 авт/ч встречного */ leftTurnPenaltySec: number;
+  /** предел задержки узла, с */ maxNodeDelaySec: number;
+  /** объезды: доля осведомлённых, относительный и абсолютный порог выигрыша */ awareShare: number; rerouteThreshold: number; rerouteMinGainMin: number;
+  /** гистерезис: макс. доля возврата; EMA стоимости */ hysteresisShare: number; costSmoothing: number;
+  /** микро: период перестройки агента, тиков; ожидание до перестройки, мин; радиус, м */ agentRerouteTicks: number; agentRerouteWaitMin: number; agentRerouteRadius: number;
+  /** этап F, микро-агенты (время микро сжато: застрявший убирается через 120 с): период пересчёта сглаженной стоимости полос, с; ожидание до объезда, с; мин. выигрыш, с; лимит раскрытий A* при объезде */ costUpdateSec: number; agentRerouteWaitSec: number; agentRerouteMinGainSec: number; agentRerouteMaxExp: number;
+  /** очереди: шаг авто в очереди, м; мин. остаточная ёмкость при переливе; макс. рёбер перелива */ vehSpacing: number; spillMinCap: number; spillMaxHops: number;
+  /** аварии: на млн авт-км; длительность мин (база, разброс); ёмкость при аварии */ accidentRatePerMVehKm: number; accidentDurationMin: number; accidentDurationSpreadMin: number; incidentCapacity: number;
+  /** «грязные» рёбра: порог изменения потока; глубина соседей */ dirtyThreshold: number; dirtyHops: number;
+  /** мин. x подхода для пересчёта задержки узла */ nodeRecalcMinVC: number;
+}
+
+export interface NetGenConsts {
+  /** мин. расстояние между параллельными дорогами, м */ parallelMin: { lane: number; street: number; avenue: number; highway: number };
+  /** мин. шаг перекрёстков вдоль дороги, м */ junctionSpacing: { lane: number; street: number; avenue: number };
+  /** мин. угол в узле, град */ minAngleDeg: { lane: number; street: number; avenue: number; highway: number };
+  /** санитарный разрыв жилья от шоссе, м (с экраном) */ highwayResSetback: number; highwayResSetbackWithWall: number;
+  /** плотность: квартал мин/макс, м; показатель степени */ blockMin: number; blockMax: number; blockExp: number;
+  /** шаг проспектов, м; макс. расстояние до проспекта по сети, м */ arterialSpacing: number; arterialMaxReach: number;
+  /** связность: макс. длина починки, м; мин. рёбер острова; макс. проходов; макс. тупик в центре, м */ repairMaxLen: number; minIslandEdges: number; repairMaxPasses: number; deadEndMax: number;
+  /** доступ: расстояние до фронтального ребра, м; грузовой — макс. уклон */ accessDist: number; freightMaxGrade: number;
+  /** участки: глубина в тайлах, доля maxL, множитель спроса C */ lots: Record<'lane' | 'street' | 'avenue' | 'pedestrian', { depthTiles: number; maxLevelShare: number; comDemandMult: number }>;
+  /** потеря уровня зданием без доступа: дней на уровень */ noAccessDecayDays: number;
+  /** генерация шоссе (запрос Степана): сглаживание rMin по классу (road-curves), мин. шаг наземных развязок, м; запас рампы у эстакады, м;
+   *  лимит пересечений одной пары «шоссе × улица» (проверка в tests/netgen); штраф клетки A* за существующую дорогу */
+  highway: { junctionStep: number; rampMargin: number; maxCrossPerPair: number; roadCellPenalty: number; segLen: number };
+}
+
+export interface RailConsts {
+  /** по системам: мин. радиус м, макс. уклон, мин. интервал мин, стоянка мин, содержание пути ₽/км/мес, депо ₽ и вместимость ТС, ёмкость станции пасс/ч, длина платформы м */
+  systems: Record<'tram' | 'metro' | 'rail', { minRadius: number; maxGrade: number; minHeadwayMin: number; dwellMin: number; trackUpkeepPerKmMonth: number; depotCost: number; depotCapacity: number; stationCapacityPerHour: number; platformLen: number }>;
+  /** разворот на конечной, мин */ turnbackMin: number;
+  /** однопутный участок: скидка цены и множитель пропускной способности */ singleTrackCostMult: number; singleTrackCapMult: number;
+  /** съезд между путями, ₽ */ crossoverCost: number;
+  /** доп. путь ж/д станции, ₽; грузовой терминал ₽ и составов/день */ stationExtraTrackCost: number; freightTerminalCost: number; freightTerminalTrainsDay: number;
+  /** переезд: задержка авто на поезд с, потеря ёмкости дороги за поезд/ч */ levelCrossingDelaySec: number; levelCrossingCapLossPerTrain: number;
+  /** метро: базовая глубина м, рост цены пути и станции на м глубже базы, мин. глубина под рекой м */ metroBaseDepth: number; metroDepthCostPerM: number; metroStationDepthCostPerM: number; metroRiverMinDepth: number;
+  /** метро: вертикальный и плановый разнос тоннелей, м; время доступа = 1 + depth/accessDepthPerMin */ tunnelVerticalSep: number; tunnelPlanSep: number; accessDepthPerMin: number;
+  /** эстакадное метро: множитель цены пути; шум L0 */ elevatedMetroCostMult: number; elevatedMetroNoiseL0: number;
+  /** подземный вид: прозрачность поверхности, мин. высота камеры м */ undergroundSurfaceOpacity: number; undergroundCameraMinY: number;
+  /** штраф перегрузки станции, мин на единицу сверх 1 */ stationOverloadMin: number;
+  /** пересадки: макс. пеший переход м, время на совмещённой станции мин, автобус рядом мин, надбавка за объединение (доля) */ transferMaxWalk: number; sharedStationTransferMin: number; busTransferMin: number; mergeStationCostShare: number;
+  /** P+R: мест, цена ₽ */ parkRideSpaces: number; parkRideCost: number;
+  /** старение: содержание после срока службы ×, шанс поломки в день */ oldVehicleUpkeepMult: number; oldVehicleBreakdownDaily: number;
+}
+
+export interface TransitLinesConsts {
+  /** шаг остановок мин/макс, м, по LINE_TYPES (Автобус, Трамвай, Метро, Поезд) */ stopSpacingMin: number[]; stopSpacingMax: number[];
+  /** периоды суток: часы начала/конца, доля суточных поездок, множитель базового интервала (0 = не ходит) */
+  periods: Record<'amPeak' | 'day' | 'pmPeak' | 'evening' | 'night', { from: number; to: number; tripShare: number; headwayMult: number }>;
+  /** стоянка на остановке, мин (автобус/трамвай) */ dwellMin: number;
+  /** доля содержания ТС в простое */ idleUpkeepShare: number;
+  /** автоподбор: целевая загрузка, макс. изменение ТС в день (доля), макс. доля дохода города на ОТ без подтверждения */ targetLoad: number; autoMaxDailyChange: number; maxAutoUpkeepShare: number;
+  /** продажа ТС: доля остаточной стоимости */ vehicleResaleShare: number;
+  /** оповещения: opRatio убыточной линии, месяцев подряд; дней без пассажиров у остановки */ unprofitableOpRatio: number; unprofitableMonths: number; deadStopDays: number;
+}
+
 export interface BalanceConstants {
   time: {
     /** игровых минут в одном тике симуляции */ tickGameMinutes: number;
@@ -145,6 +226,28 @@ export interface BalanceConstants {
     aiProfiles: Record<'cooperative' | 'mercantile' | 'cautious' | 'protectionist', { thresholdShift: number; tollMult: number }>;
     /** изменение отношений: согласие, отказ, отзыв, спор */ relationOnApprove: number; relationOnWithdraw: number; relationOnDispute: number;
   };
+  engagement: {
+    /** макс. всплывающих чисел на экране; TTL, с */ floatTextMaxOnScreen: number; floatTextTtlSec: number;
+    /** кулдаун одного типа оповещения, дней; макс. несрочных записей ленты в день */ alertCooldownDays: number; feedMaxPerDay: number;
+    /** автопауза на критичных событиях */ autoPauseOnCritical: boolean;
+    /** награды онбординга, ₽ (для размера city, масштабируются startMoney[size]/startMoney[2], мин. 0.1) */ onboardingGoalRewards: number[]; onboardingRewardMinScale: number;
+    /** макс. активных поручений */ maxActiveQuests: number;
+    /** события: шанс в день, мин. интервал, дней на решение */ eventDailyChance: number; eventMinGapDays: number; eventDecisionDays: number;
+    /** контракты: премия к цене, штраф за срыв (доля), изменение отношений */ contractPremium: number; contractPenaltyShare: number; contractRelationOk: number; contractRelationFail: number;
+    /** исследования: rp за 1 млн ₽ дохода в месяц и за 100 тыс жителей */ rpPerMillionIncome: number; rpPer100kPop: number;
+    /** кулдаун совета одного советника, дней; откладывание по «Не сейчас» */ advisorCooldownDays: number; advisorSnoozeDays: number;
+    /** динамическая сложность: пороги стресса и границы множителя */ stressHigh: number; stressLow: number; dynMinMult: number; dynMaxMult: number;
+    /** режимы сложности: множитель денег, частоты событий; банкротство (мес, 0 = выкл) */
+    difficulty: Record<'relaxed' | 'normal' | 'hard', { moneyMult: number; eventMult: number; bankruptcyMonths: number; aiThresholdShift: number }>;
+    /** длина сезона мультиплеера, реальных дней */ seasonLengthDays: number;
+  };
+  roads: RoadSystemConsts;
+  congestion: CongestionConsts;
+  netgen: NetGenConsts;
+  rail: RailConsts;
+  lines: TransitLinesConsts;
+  /** этап H (THEMES_SPEC §5): размер квартала темы, м; режим «Смешанный»: радиус исторического центра, м, и его эпоха (лет игры); годы кольца новостроек; после какого года — base; доля вкраплений; шаг квантования этажей */
+  themes: { quarterSize: number; coreRadius: number; coreEpoch: number; ringEpoch: [number, number]; lateEpoch: number; mixShare: number; floorStep: number };
   alerts: {
     /** порог V/C «пробка» */ congestionVC: number;
     /** порог дефицита товаров (доля неудовлетворённого спроса) */ goodsShortage: number;
@@ -345,6 +448,202 @@ export const BALANCE: BalanceConstants = {
     relationOnApprove: 3,
     relationOnWithdraw: -15,
     relationOnDispute: -5,
+  },
+  engagement: {
+    floatTextMaxOnScreen: 24,
+    floatTextTtlSec: 1.5,
+    alertCooldownDays: 3,
+    feedMaxPerDay: 8,
+    autoPauseOnCritical: true,
+    onboardingGoalRewards: [50000, 50000, 100000, 100000, 200000],
+    onboardingRewardMinScale: 0.1,
+    maxActiveQuests: 3,
+    eventDailyChance: 0.08,
+    eventMinGapDays: 10,
+    eventDecisionDays: 3,
+    contractPremium: 1.25,
+    contractPenaltyShare: 0.2,
+    contractRelationOk: 3,
+    contractRelationFail: -5,
+    rpPerMillionIncome: 1,
+    rpPer100kPop: 2,
+    advisorCooldownDays: 5,
+    advisorSnoozeDays: 30,
+    stressHigh: 0.7,
+    stressLow: 0.25,
+    dynMinMult: 0.5,
+    dynMaxMult: 1.5,
+    difficulty: {
+      relaxed: { moneyMult: 2, eventMult: 0.5, bankruptcyMonths: 0, aiThresholdShift: -0.15 },
+      normal: { moneyMult: 1, eventMult: 1, bankruptcyMonths: 3, aiThresholdShift: 0 },
+      hard: { moneyMult: 0.6, eventMult: 1.5, bankruptcyMonths: 2, aiThresholdShift: 0.1 },
+    },
+    seasonLengthDays: 28,
+  },
+  roads: {
+    classes: {
+      highway: { speed: 28, minLanes: 1, maxLanes: 4, baseCostPerM: 260, upkeepPerM: 1.0, laneCapacityPerHour: 2000, minRadius: 450, maxGrade: 0.05, clearance: 5.0, tunnelMinCover: 4, noiseL0: 75, pollutionPerVehKm: 1.0, frontage: false },
+      ramp: { speed: 15, minLanes: 1, maxLanes: 1, baseCostPerM: 180, upkeepPerM: 0.7, laneCapacityPerHour: 1800, minRadius: 110, maxGrade: 0.07, clearance: 5.0, tunnelMinCover: 4, noiseL0: 70, pollutionPerVehKm: 1.0, frontage: false },
+      street: { speed: 13, minLanes: 1, maxLanes: 3, baseCostPerM: 60, upkeepPerM: 0.25, laneCapacityPerHour: 700, minRadius: 90, maxGrade: 0.08, clearance: 4.5, tunnelMinCover: 3, noiseL0: 68, pollutionPerVehKm: 0.8, frontage: true },
+      lane: { speed: 8, minLanes: 1, maxLanes: 1, baseCostPerM: 35, upkeepPerM: 0.15, laneCapacityPerHour: 400, minRadius: 30, maxGrade: 0.12, clearance: 4.0, tunnelMinCover: 3, noiseL0: 60, pollutionPerVehKm: 0.6, frontage: true },
+    },
+    modules: {
+      car: { width: 3.5, costPerM: 0, upkeepPerM: 0, capacityMult: 1 },
+      bus: { width: 3.5, costPerM: 20, upkeepPerM: 0.05, capacityMult: 1 },
+      tramShared: { width: 3.5, costPerM: 35, upkeepPerM: 0.1, capacityMult: 0.8 },
+      tramDedicated: { width: 3.2, costPerM: 45, upkeepPerM: 0.12, capacityMult: 1 },
+      bike: { width: 2.0, costPerM: 12, upkeepPerM: 0.03, capacityMult: 1 },
+      sidewalk: { width: 2.0, costPerM: 6, upkeepPerM: 0.02, capacityMult: 1 },
+      pedestrian: { width: 3.0, costPerM: 25, upkeepPerM: 0.04, capacityMult: 0 },
+      trees: { width: 1.5, costPerM: 8, upkeepPerM: 0.03, capacityMult: 1 },
+      median: { width: 2.0, costPerM: 5, upkeepPerM: 0.01, capacityMult: 1.05 },
+      parking: { width: 2.5, costPerM: 4, upkeepPerM: 0.01, capacityMult: 0.9 },
+      noiseWall: { width: 0.5, costPerM: 30, upkeepPerM: 0.02, capacityMult: 1 },
+    },
+    maxLanesPerDir: 4,
+    rampMinLen: 120,
+    rampMinSpacing: 400,
+    embankmentPerM: 0.08,
+    bridgeBase: 3,
+    bridgePerM: 0.1,
+    tunnelBase: 6,
+    tunnelPerM: 0.05,
+    bridgeUpkeepMult: 2,
+    tunnelUpkeepMult: 3,
+    pierSpacing: 40,
+    pierSpacingWater: 60,
+    segMinLen: 8,
+    segMaxLen: 400,
+    chordError: 0.5,
+    minRadiusSoftShare: 0.5,
+    upgradeRefund: 0.7,
+    demolishShare: 0.2,
+    signalCycleSec: 90,
+    autoSignalFlow: 1200,
+    noiseThresholdDb: 65,
+    noiseLandValuePenalty: 0.1,
+  },
+  congestion: {
+    levelVC: { dense: 0.6, jam: 0.9, gridlock: 1.2 },
+    levelColors: { free: '#3cb043', dense: '#f2c230', jam: '#e04848', gridlock: '#7a1020' },
+    gapCriticalSec: 6.5,
+    gapFollowSec: 3.5,
+    analysisPeriodH: 0.25,
+    saturationFlowPerLane: 1800,
+    lostTimePerPhaseSec: 4,
+    roundaboutA: 1400,
+    roundaboutB: 0.7,
+    roundaboutMinCap: 200,
+    stopAllExtraSec: 4,
+    mergeFactor: 0.8,
+    taperFactor: 0.95,
+    leftTurnPenaltySec: 6,
+    maxNodeDelaySec: 600,
+    awareShare: 0.35,
+    rerouteThreshold: 0.1,
+    rerouteMinGainMin: 2,
+    hysteresisShare: 0.5,
+    costSmoothing: 0.5,
+    agentRerouteTicks: 30,
+    agentRerouteWaitMin: 3,
+    agentRerouteRadius: 2000,
+    costUpdateSec: 20,
+    agentRerouteWaitSec: 30,
+    agentRerouteMinGainSec: 15,
+    agentRerouteMaxExp: 20000,
+    vehSpacing: 7,
+    spillMinCap: 0.2,
+    spillMaxHops: 4,
+    accidentRatePerMVehKm: 0.8,
+    accidentDurationMin: 45,
+    accidentDurationSpreadMin: 30,
+    incidentCapacity: 0.5,
+    dirtyThreshold: 0.1,
+    dirtyHops: 2,
+    nodeRecalcMinVC: 0.5,
+  },
+  netgen: {
+    parallelMin: { lane: 40, street: 56, avenue: 80, highway: 200 },
+    junctionSpacing: { lane: 30, street: 50, avenue: 120 },
+    minAngleDeg: { lane: 30, street: 35, avenue: 45, highway: 15 },
+    highwayResSetback: 30,
+    highwayResSetbackWithWall: 15,
+    blockMin: 90,
+    blockMax: 320,
+    blockExp: 1.5,
+    arterialSpacing: 800,
+    arterialMaxReach: 600,
+    repairMaxLen: 1500,
+    minIslandEdges: 6,
+    repairMaxPasses: 8,
+    deadEndMax: 300,
+    accessDist: 24,
+    freightMaxGrade: 0.06,
+    highway: { junctionStep: 600, rampMargin: 30, maxCrossPerPair: 2, roadCellPenalty: 6, segLen: 40 },
+    lots: {
+      lane: { depthTiles: 2, maxLevelShare: 0.4, comDemandMult: 0.8 },
+      street: { depthTiles: 2, maxLevelShare: 1, comDemandMult: 1 },
+      avenue: { depthTiles: 3, maxLevelShare: 1, comDemandMult: 1.25 },
+      pedestrian: { depthTiles: 2, maxLevelShare: 0.8, comDemandMult: 1.3 },
+    },
+    noAccessDecayDays: 10,
+  },
+  rail: {
+    systems: {
+      tram: { minRadius: 25, maxGrade: 0.06, minHeadwayMin: 2, dwellMin: 0.5, trackUpkeepPerKmMonth: 350, depotCost: 80000, depotCapacity: 10, stationCapacityPerHour: 3000, platformLen: 30 },
+      metro: { minRadius: 200, maxGrade: 0.04, minHeadwayMin: 2, dwellMin: 0.5, trackUpkeepPerKmMonth: 2170, depotCost: 1200000, depotCapacity: 20, stationCapacityPerHour: 25000, platformLen: 120 },
+      rail: { minRadius: 600, maxGrade: 0.025, minHeadwayMin: 3, dwellMin: 1.5, trackUpkeepPerKmMonth: 920, depotCost: 900000, depotCapacity: 15, stationCapacityPerHour: 15000, platformLen: 250 },
+    },
+    turnbackMin: 2,
+    singleTrackCostMult: 0.6,
+    singleTrackCapMult: 0.33,
+    crossoverCost: 5000,
+    stationExtraTrackCost: 25000,
+    freightTerminalCost: 150000,
+    freightTerminalTrainsDay: 40,
+    levelCrossingDelaySec: 120,
+    levelCrossingCapLossPerTrain: 0.02,
+    metroBaseDepth: 10,
+    metroDepthCostPerM: 0.02,
+    metroStationDepthCostPerM: 0.03,
+    metroRiverMinDepth: 20,
+    tunnelVerticalSep: 6,
+    tunnelPlanSep: 10,
+    accessDepthPerMin: 20,
+    elevatedMetroCostMult: 0.6,
+    elevatedMetroNoiseL0: 72,
+    undergroundSurfaceOpacity: 0.15,
+    undergroundCameraMinY: -80,
+    stationOverloadMin: 5,
+    transferMaxWalk: 200,
+    sharedStationTransferMin: 3,
+    busTransferMin: 4,
+    mergeStationCostShare: 0.3,
+    parkRideSpaces: 200,
+    parkRideCost: 50000,
+    oldVehicleUpkeepMult: 1.5,
+    oldVehicleBreakdownDaily: 0.01,
+  },
+  themes: { quarterSize: 120, coreRadius: 1200, coreEpoch: 15, ringEpoch: [10, 40], lateEpoch: 40, mixShare: 0.2, floorStep: 1 },
+  lines: {
+    stopSpacingMin: [250, 250, 600, 1500],
+    stopSpacingMax: [800, 800, 2000, 15000],
+    periods: {
+      amPeak: { from: 7, to: 10, tripShare: 0.3, headwayMult: 1 },
+      day: { from: 10, to: 17, tripShare: 0.3, headwayMult: 1.5 },
+      pmPeak: { from: 17, to: 20, tripShare: 0.27, headwayMult: 1 },
+      evening: { from: 20, to: 24, tripShare: 0.1, headwayMult: 2 },
+      night: { from: 0, to: 7, tripShare: 0.03, headwayMult: 4 },
+    },
+    dwellMin: 0.5,
+    idleUpkeepShare: 0.3,
+    targetLoad: 0.8,
+    autoMaxDailyChange: 0.2,
+    maxAutoUpkeepShare: 0.2,
+    vehicleResaleShare: 0.5,
+    unprofitableOpRatio: 0.5,
+    unprofitableMonths: 3,
+    deadStopDays: 30,
   },
   alerts: {
     congestionVC: 0.9,

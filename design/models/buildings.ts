@@ -1,6 +1,8 @@
 // Здания v2 «Пастила»: единый язык форм — светлый цоколь, сахарный карниз, фаска кровли, рамы окон,
 // один фирменный акцент (бирюза/коралл/шафран) на каждом здании. Вариации: seed → стиль крыши, пропорции, детали.
 import * as THREE from 'three';
+import type { ThemedBuildingOpts } from './themes/common';
+import { createThemedBuilding } from './themes/index';
 import { GeoBuilder, hex, rng, shade, mix, RGB, Rng } from './builder';
 import { BUILD, BRAND } from '../palette';
 
@@ -175,6 +177,10 @@ export const BUILDING_KINDS = Object.keys(IMPL) as BuildingKind[];
 /** Рекомендуемое число вариаций (InstancedMesh на вариацию). */
 export const BUILDING_VARIANTS: Record<BuildingKind, number> = { house: 8, resMid: 6, resTower: 6, commercialSmall: 6, office: 6, industrial: 4, warehouse: 4, civic: 4, station: 2, depot: 2 };
 
-export function createBuilding(kind: BuildingKind, opts: BuildingOpts = {}): THREE.BufferGeometry {
+/** Перегрузки: createBuilding(kind, opts) — v2; createBuilding({ theme, kind, width, depth, floors, seed, lit, neutral }) — темы v4. */
+export function createBuilding(kind: BuildingKind, opts?: BuildingOpts): THREE.BufferGeometry;
+export function createBuilding(opts: ThemedBuildingOpts): THREE.BufferGeometry;
+export function createBuilding(kind: BuildingKind | ThemedBuildingOpts, opts: BuildingOpts = {}): THREE.BufferGeometry {
+  if (typeof kind === 'object') return createThemedBuilding(kind);
   const b = new GeoBuilder(); b.aoHeight = kind === 'house' ? 2.5 : 5; IMPL[kind](b, rng(opts.seed ?? 1), opts); return b.build();
 }

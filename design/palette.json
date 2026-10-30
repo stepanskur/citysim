@@ -589,5 +589,110 @@
       "yellow": 3,
       "allRed": 1
     }
+  },
+  "THEMES": {
+    "base": {
+      "label": "Базовая «Пастила»"
+    },
+    "lateSng": {
+      "label": "Позднее СНГ",
+      "panels": [
+        "#e9dcc4",
+        "#c9d3dc",
+        "#e8cf8e",
+        "#d9d5cc",
+        "#f0e6d6",
+        "#bfd0d8"
+      ],
+      "seams": [
+        "#d25b4a",
+        "#3f7fbf",
+        "#4f9a6a",
+        "#e0a030",
+        "#8f86b8",
+        "#c8c2b6"
+      ],
+      "roof": "#55586a",
+      "parapet": "#b8b2a8",
+      "plinth": "#8a8580",
+      "glass": "#7e9ab8",
+      "frame": "#f4f1ea",
+      "loggiaGlaze": [
+        "#bfd8e4",
+        "#d6e6d0",
+        "#e8e0c8",
+        "#f4f1ea"
+      ],
+      "door": "#6a5040",
+      "canopy": "#cfc8bc",
+      "shopGlass": "#6fa8c8",
+      "sign": [
+        "#d8402f",
+        "#1f7fbf",
+        "#2f9a5a"
+      ]
+    },
+    "russianClassic": {
+      "label": "Российская классика",
+      "walls": [
+        "#e8b85a",
+        "#c8684a",
+        "#f2e2a0",
+        "#d8e8cc",
+        "#ecc8a2",
+        "#b5503f",
+        "#f0d2b0"
+      ],
+      "trim": "#fff8ee",
+      "roofs": [
+        "#5f8f6a",
+        "#8a929c",
+        "#4f7a5a",
+        "#a04a3a",
+        "#7a8590"
+      ],
+      "plinth": "#a89a8a",
+      "glass": "#5f7a96",
+      "door": "#5a3a2e",
+      "gate": "#2b2f45",
+      "dome": "#5f8f6a"
+    },
+    "french": {
+      "label": "Париж (Осман)",
+      "stone": [
+        "#f1e6cf",
+        "#eadcc0",
+        "#f5ecda",
+        "#e6d6b8"
+      ],
+      "zinc": "#7f8a96",
+      "zincDark": "#5f6a76",
+      "iron": "#2b2f45",
+      "awnings": [
+        "#b5303a",
+        "#1f5f4a",
+        "#2b3f6a",
+        "#e6c14a",
+        "#8a2f4a"
+      ],
+      "chimney": "#c98a6a",
+      "pot": "#b5603f",
+      "glass": "#6d8aa8",
+      "shop": [
+        "#1f3f4a",
+        "#5a2a2a",
+        "#2b2f45",
+        "#3f5a3a"
+      ]
+    },
+    "details": {
+      "downpipe": "#8a929c",
+      "ac": "#eef0f2",
+      "acGrille": "#9aa2ae",
+      "vent": "#b8b0b8",
+      "antenna": "#6a7080",
+      "dish": "#f4f4f0",
+      "fireEscape": "#3a3f5a"
+    }
   }
 }

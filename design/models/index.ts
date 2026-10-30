@@ -9,13 +9,15 @@ import { createBuilding, BUILDING_KINDS, BuildingKind, BuildingOpts } from './bu
 import { createVehicle, VEHICLE_KINDS, VEHICLE_LENGTH, VehicleKind, VehicleOpts } from './vehicles';
 import { createTree, TREE_KINDS, TreeKind, TreeOpts } from './trees';
 import { createProp, PropKind } from './props';
-export * from './buildings'; export * from './vehicles'; export * from './trees'; export * from './props';
+import { createThemedBuilding, ThemedBuildingOpts, THEME_KINDS } from './themes/index';
+import { createStation, STATION_KINDS, StationKind, StationOpts } from './stations';
+export * from './buildings'; export * from './vehicles'; export * from './trees'; export * from './props'; export * from './stations'; export * from './themes/index';
 export { GeoBuilder, rng } from './builder';
 
-export type ModelKind = { type: 'building'; kind: BuildingKind; opts?: BuildingOpts } | { type: 'vehicle'; kind: VehicleKind; opts?: VehicleOpts } | { type: 'tree'; kind: TreeKind; opts?: TreeOpts } | { type: 'prop'; kind: PropKind; seed?: number };
+export type ModelKind = { type: 'building'; kind: BuildingKind; opts?: BuildingOpts } | { type: 'vehicle'; kind: VehicleKind; opts?: VehicleOpts } | { type: 'tree'; kind: TreeKind; opts?: TreeOpts } | { type: 'prop'; kind: PropKind; seed?: number } | { type: 'station'; kind: StationKind; opts?: StationOpts } | { type: 'themed'; opts: ThemedBuildingOpts };
 
 export function createModel(m: ModelKind): THREE.BufferGeometry {
-  switch (m.type) { case 'building': return createBuilding(m.kind, m.opts); case 'vehicle': return createVehicle(m.kind, m.opts); case 'tree': return createTree(m.kind, m.opts); case 'prop': return createProp(m.kind, m.seed); }
+  switch (m.type) { case 'building': return createBuilding(m.kind, m.opts); case 'vehicle': return createVehicle(m.kind, m.opts); case 'tree': return createTree(m.kind, m.opts); case 'prop': return createProp(m.kind, m.seed); case 'station': return createStation(m.kind, m.opts); case 'themed': return createThemedBuilding(m.opts); }
 }
 
 /** Кэш вариаций: N геометрий на тип (seed 1..N). Один InstancedMesh на вариацию. */
@@ -33,5 +35,5 @@ export class ModelLibrary {
 export { createStyledMaterial } from '../scene-preset';
 /** Простой материал без ночного свечения. Для полного стиля используйте createStyledMaterial(). */
 export const createModelMaterial = () => new THREE.MeshLambertMaterial({ vertexColors: true });
-export const KINDS = { buildings: BUILDING_KINDS, vehicles: VEHICLE_KINDS, trees: TREE_KINDS, props: ['streetLight', 'busStop', 'tramStop', 'trafficLight', 'bench', 'signalLamp'] as PropKind[] };
+export const KINDS = { buildings: BUILDING_KINDS, vehicles: VEHICLE_KINDS, trees: TREE_KINDS, props: ['streetLight', 'busStop', 'tramStop', 'trafficLight', 'bench', 'signalLamp'] as PropKind[], stations: STATION_KINDS, themes: THEME_KINDS };
 export { VEHICLE_LENGTH };

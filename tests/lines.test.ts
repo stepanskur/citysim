@@ -1,0 +1,20 @@
+// Этап E: линии по остановкам (mechanics/15) — пример из §3, интервалы, автоподбор, шаг остановок
+import { loadsFromOD, capPerHour, schedule, autoTarget, spacingWarnings, gravityOD, crowdLoss, cycleTimeMin } from '../src/sim/LineLoad';
+let fail = 0; const ok = (c: boolean, m: string) => { console.log((c ? 'ok ' : 'FAIL ') + m); if (!c) fail++; };
+const T = [[0, 60, 120, 80, 140], [0, 0, 40, 60, 100], [0, 0, 0, 30, 90], [0, 0, 0, 0, 50], [0, 0, 0, 0, 0]];
+const L = loadsFromOD(T);
+ok(L.board.join() === '400,200,120,50,0', 'board по §3: ' + L.board.join());
+ok(L.alight.join() === '0,60,160,170,380', 'alight по §3: ' + L.alight.join());
+ok(L.fwd.join() === '400,540,500,380', 'segLoad A→B…D→E = 400,540,500,380: ' + L.fwd.join());
+ok(Math.abs(540 / capPerHour(5, 80) - 0.5625) < 1e-6, 'интервал 5 мин: ёмкость 960, load 0.56');
+ok(540 / capPerHour(10, 80) > 1.1, 'интервал 10 мин: переполнение 1.13');
+ok(crowdLoss(0.9) === 0 && crowdLoss(1.2) > 0, 'потери от переполнения только при load > 1');
+const cyc = 2 * 8000 / (9 * 60) + 0.5 * 10 + 4; ok(Math.abs(cycleTimeMin(16000, 9, 5, 0) - cyc) < 1e-6, `оборот примера §5 = ${cyc.toFixed(1)} мин`);
+const sc = schedule(38.6, 8); ok(sc[0].headwayMin.toFixed(1) === '4.8' && sc[0].vehicles === 8 && sc.find(p => p.period === 'night')!.headwayMin <= 30, 'расписание: пик 4.8 мин / 8 ТС, ночь ≤ 30 мин');
+ok(autoTarget(38.6, 540, 80, 8) === 6, 'автоподбор: шаг ≤ ±20% в день (8 → ' + autoTarget(38.6, 540, 80, 8) + ')');
+ok(autoTarget(38.6, 5000, 80, 8) === 10, 'автоподбор при перегрузке растёт на 2 (20%)');
+const sw = spacingWarnings(0, [{ x: 0, z: 0 }, { x: 100, z: 0 }, { x: 600, z: 0 }, { x: 2000, z: 0 }]);
+ok(sw.length === 2 && sw[0].kind === 'slow' && sw[1].kind === 'gap', 'шаг остановок автобуса: 100 м — медленно, 1400 м — пропуск охвата');
+const od = gravityOD([100, 50, 0], [0, 50, 100], 1000); const s = od.flat().reduce((a, b) => a + b, 0);
+ok(Math.abs(s - 1000) < 1e-6 && od[2][0] === 0 && od[0][0] === 0, 'OD нормирована к поездкам, без i=i и без жителей — без посадок');
+console.log(fail ? `Провалено: ${fail}` : 'Все проверки линий пройдены'); process.exit(fail ? 1 : 0);

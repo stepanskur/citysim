@@ -15,9 +15,9 @@ type Tab = 'mine' | 'in' | 'out' | 'archive';
 export class RoutesPanel {
   el: HTMLElement; btn: HTMLElement; open = false; tab: Tab = 'mine'; sel = -1; drawing: RouteMode | null = null; dirty = true;
   constructor(public g: Game, public sys: RoutesSystem) {
-    this.btn = document.createElement('button'); this.btn.className = 'cs-btn rt-fab'; this.btn.innerHTML = '🛤 Маршруты <span class="rt-badge"></span>'; this.btn.onclick = () => this.toggle();
-    this.el = document.createElement('div'); this.el.className = 'cs-root cs-panel rt-panel'; this.el.style.display = 'none';
-    document.body.append(this.btn, this.el); sys.listeners.push(() => { this.dirty = true; });
+    this.btn = document.createElement('button'); this.btn.className = 'cs-btn cs-btn--icon rt-fab'; this.btn.dataset.tip = 'Маршруты'; this.btn.innerHTML = '<svg class="cs-ico"><use href="#i-rail"/></svg><span class="rt-badge"></span>'; this.btn.onclick = () => this.toggle();
+    this.el = document.createElement('div'); this.el.className = 'cs-root cs-glass cs-panel rt-panel'; this.el.style.display = 'none';
+    const bar = document.getElementById('pbtns'); const st = bar?.querySelector('button[data-p="settings"]'); if (st) st.before(this.btn); else if (bar) bar.append(this.btn); else document.body.append(this.btn); document.body.append(this.el); sys.listeners.push(() => { this.dirty = true; });
     const cv = g.r.canvas;
     window.addEventListener('keydown', e => { if (!this.drawing) return; if (e.key === 'Enter') { e.stopImmediatePropagation(); this.finish(); } if (e.key === 'Escape') this.stopDraw(); }, true);
     cv.addEventListener('dblclick', e => { if (this.drawing) { e.stopImmediatePropagation(); this.finish(); } }, true);

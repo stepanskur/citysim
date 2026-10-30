@@ -1,0 +1,8 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 1400, height: 850 } });
+await p.goto(process.argv[2]); await p.waitForFunction('window.ready === true');
+await p.waitForTimeout(2000); let z=0; while(z<3){ z=(await p.evaluate('window.chunkPending'))===0?z+1:0; await p.waitForTimeout(500);} 
+console.log(JSON.stringify(await p.evaluate(`(()=>{const r=game.r;const tc=m=>{if(!m||!m.geometry)return 0;const g=m.geometry;return Math.round((g.index?g.index.count:g.attributes.position.count)/3*(m.count||1))};const o={terrain:0,roads:0,marks:0,blds:0};for(const ch of r.chunks.values()){o.terrain+=tc(ch.terrain);o.roads+=tc(ch.roads);o.marks+=tc(ch.marks);for(const b of ch.blds)o.blds+=tc(b)};const mats={};for(const k of Object.keys(r)){const v=r[k];if(v&&v.isMaterial)mats[v.uuid]=k};const big=[];r.scene.traverse(m=>{if(m.isInstancedMesh&&tc(m)>20000)big.push([mats[m.material.uuid],m.count,m.geometry.attributes.position.count])});o.big=big;o.cam=r.ctl.dist;return o})()`)));
+console.log(JSON.stringify(await p.evaluate(`(()=>{const r=game.r,o={};r.scene.traverse(m=>{if(!m.geometry||!m.visible)return;const g=m.geometry;const t=(g.index?g.index.count:g.attributes.position.count)/3*(m.count||1);const k=(m.isInstancedMesh?'I:':'')+(m.material&&m.material.type)+(m.name?':'+m.name:'')+(m.isInstancedMesh?':'+g.attributes.position.count:'');o[k]=o[k]||[0,0];o[k][0]++;o[k][1]+=Math.round(t)});return Object.entries(o).sort((a,b)=>b[1][1]-a[1][1]).slice(0,15)})()`)));
+await b.close();

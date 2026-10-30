@@ -8,14 +8,15 @@
  * НЕ меняйте существующие поля без записи в PROGRESS.md.
  */
 export type Cmd =
-  | { a: 'road'; p: [number, number, number, number]; t: number }          // ax,az,bx,bz, тип дороги
-  | { a: 'curve'; p: [number, number, number, number, number, number]; t: number } // a, control, b
+  | { a: 'road'; p: [number, number, number, number]; t: number; lv?: number; m?: number } // этап C: lv уровень, m модули (необязательные)          // ax,az,bx,bz, тип дороги
+  | { a: 'rail'; p: [number, number, number, number]; t: number; lv?: number } // этап D: путь (0 ж/д, 1 трамвай, 2 метро), lv уровень
+  | { a: 'curve'; p: [number, number, number, number, number, number]; t: number; lv?: number; m?: number } // a, control, b
   | { a: 'zone'; p: [number, number, number, number]; t: number }          // прямоугольник, Z
   | { a: 'bull'; p: [number, number] }
   | { a: 'terra'; p: [number, number]; t: number; h: number; s: number }
   | { a: 'place'; p: [number, number]; t: number }
   | { a: 'line'; p: number[]; t: number }                                   // остановки x,z,...; тип LINE_TYPES
-  | { a: 'lineVeh'; id: number; d: number } | { a: 'lineFare'; id: number; d: number } | { a: 'lineDel'; id: number }
+  | { a: 'lineVeh'; id: number; d: number } | { a: 'lineFare'; id: number; d: number } | { a: 'lineDel'; id: number } | { a: 'lineAuto'; id: number; on: boolean }
   | { a: 'tax'; k: 'R' | 'C' | 'I'; v: number }
   | { a: 'loan'; i: number } | { a: 'repay' }
   | { a: 'buySub'; i: number }

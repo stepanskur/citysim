@@ -4,7 +4,15 @@ import type { WorldData, CityInfo } from '../gen/worldgen';
 import { lerp, clamp } from '../util';
 import { Subregions } from './Subregions';
 
+/** этап C: высота эстакады (габарит 4.5–5 м + конструкция), глубина тоннеля, уклон рамп (≈ maxGrade улицы) */
+export const LEVEL_DECK = 7, LEVEL_TUN = 10, LEVEL_GRADE = 0.08;
+/** этап D: глубина метро = STATION_MODULE.metroDepth (12 м, design/models/stations), уклон путей ≈ maxGrade метро 0.04 (BALANCE.systems) */
+export const METRO_DEPTH = 12, RAIL_GRADE = 0.04;
+export const RAIL = { TRAIN: 0, TRAM: 1, METRO: 2 } as const;
+export const RAIL_TYPES = [{ name: 'Ж/д путь', cost: 1100, w: 6 }, { name: 'Трамвайный путь', cost: 450, w: 4 }, { name: 'Метро', cost: 2600, w: 8 }];
 export class World {
+  /** этап H: архитектурный стиль (настройка новой игры, входит в сохранение), темы кварталов {t, e = год застройки}, текущий игровой год */
+  arch: string = 'mixed'; quarters = new Map<number, { t: any; e: number }>(); gameYear = 0;
   seed: number; sizeIdx: number; N: number; M: number; NV: number;
   heights: Float32Array; resource: Uint8Array; zone: Uint8Array; bld: Uint16Array; kind: Uint8Array; cityOf: Uint8Array; road: Uint8Array; style: Uint8Array;
   landValue: Float32Array; // coarse
@@ -40,6 +48,7 @@ export class World {
     this.chunksN = Math.ceil(this.N / CHUNK);
     this.net.onEdgeAdded = e => this.edgeChanged(e, true);
     this.net.onEdgeRemoved = e => this.edgeChanged(e, false);
+    this.hookRail();
   }
   get size() { return SIZES[this.sizeIdx]; }
   H(i: number, j: number) { return this.heights[clamp(j, 0, this.N) * this.NV + clamp(i, 0, this.N)]; }
@@ -51,10 +60,38 @@ export class World {
   chunkOfTile(i: number, j: number) { return Math.floor(j / CHUNK) * this.chunksN + Math.floor(i / CHUNK); }
   chunkOfPos(x: number, z: number) { return this.chunkOfTile(clamp(Math.floor(x / TILE), 0, this.N - 1), clamp(Math.floor(z / TILE), 0, this.N - 1)); }
   markBld(i: number, j: number) { this.dirtyBld.add(this.chunkOfTile(i, j)); }
+  /** этап C (mechanics/11 §5): подъём узла. Узел «чистого» уровня (все живые рёбра эстакадные/тоннельные) поднимается
+   *  на min(D, LEVEL_GRADE · расстояние по рёбрам уровня до узла смешанного уровня) — рампа может идти через несколько рёбер.
+   *  Работает для любой сети: дорожной (this.net) и рельсовой (this.rail, этап D). */
+  liftCache = new Map<number, number>(); railLift = new Map<number, number>();
+  nodeLvl(n: number, net = this.net) { let lv = 9; for (const e of net.nodes[n].edges) { const E = net.edges[e]; if (!E.alive) continue; const l = E.lv || 0; if (lv === 9) lv = l; else if (lv !== l) return 0; } return lv === 9 ? 0 : lv; }
+  nodeLift(n: number, net = this.net): number {
+    const cache = net === this.net ? this.liftCache : this.railLift; const c = cache.get(n); if (c !== undefined) return c;
+    const lv = this.nodeLvl(n, net); let out = 0;
+    if (lv) { const D = lv > 0 ? LEVEL_DECK : (net === this.rail ? METRO_DEPTH : LEVEL_TUN), G = net === this.rail ? RAIL_GRADE : LEVEL_GRADE, maxD = D / G; const dist = new Map<number, number>([[n, 0]]); const q: number[] = [n]; let best = maxD;
+      while (q.length) { q.sort((a, b) => dist.get(b)! - dist.get(a)!); const u = q.pop()!; const du = dist.get(u)!; if (du >= best) break; if (this.nodeLvl(u, net) !== lv) { best = du; break; }
+        for (const e of net.nodes[u].edges) { const E = net.edges[e]; if (!E.alive || (E.lv || 0) !== lv) continue; const v = E.a === u ? E.b : E.a; const nd = du + E.len; if (nd < (dist.get(v) ?? Infinity) && nd < best) { dist.set(v, nd); q.push(v); } } }
+      out = lv * Math.min(D, best * G); }
+    cache.set(n, out); return out;
+  }
+  /** смещение по высоте на ребре e в точке s (м от узла a): рампы, плато на ±D */
+  edgeOff(e: number, s: number, net = this.net) { const E = net.edges[e]; const lv = E.lv || 0; if (!lv) return 0; const rail = net === this.rail; const D = lv > 0 ? LEVEL_DECK : rail ? METRO_DEPTH : LEVEL_TUN, G = rail ? RAIL_GRADE : LEVEL_GRADE;
+    const la = Math.abs(this.nodeLift(E.a, net)), lb = Math.abs(this.nodeLift(E.b, net)); return lv * Math.max(0, Math.min(D, la + s * G, lb + (E.len - s) * G)); }
+  /** этап D: рельсовая сеть (ж/д, обособленный трамвай, метро). type: RAIL.* ; lv −1 у метро всегда */
+  rail = new RoadNet();
+  railChanged(e: number, added: boolean) {
+    this.railLift.clear(); const E = this.rail.edges[e]; const A = this.rail.nodes[E.a], B = this.rail.nodes[E.b];
+    if (added && (E.lv || 0) === 0) this.forTilesAlong(A.x, A.z, B.x, B.z, 7, k => { if (this.bld[k] && this.kind[k] !== K.PORT && this.kind[k] !== K.STATION) this.setBld(k, 0, 0); this.zone[k] = 0; });
+    const steps = Math.ceil(E.len / 64); for (let s = 0; s <= steps; s++) this.dirtyRoads.add(this.chunkOfPos(A.x + (B.x - A.x) * s / steps, A.z + (B.z - A.z) * s / steps));
+    this.railVer++;
+  }
+  railVer = 0;
+  hookRail() { this.rail.onEdgeAdded = e => this.railChanged(e, true); this.rail.onEdgeRemoved = e => this.railChanged(e, false); }
   edgeChanged(e: number, added: boolean) {
+    this.liftCache.clear();
     const E = this.net.edges[e]; const A = this.net.nodes[E.a], B = this.net.nodes[E.b];
     const w = ROAD_TYPES[E.type].w;
-    if (added) {
+    if ((E.lv || 0) < 0) { /* тоннель: поверхность не занимает */ } else if (added) {
       markRoadTiles(this.N, this.road, A.x, A.z, B.x, B.z, E.type, w);
       // clear buildings under road
       this.forTilesAlong(A.x, A.z, B.x, B.z, w, k => { if (this.bld[k] && this.kind[k] !== K.PORT) this.setBld(k, 0, 0); this.zone[k] = 0; });

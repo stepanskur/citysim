@@ -1,5 +1,8 @@
 export interface RNode { x: number; z: number; edges: number[]; alive: boolean; city: number; outside: boolean }
-export interface REdge { a: number; b: number; type: number; len: number; alive: boolean; city: number }
+/** lv: уровень (0 земля, 1 эстакада/мост, −1 тоннель; mechanics/11 §5); m: модули профиля, биты MOD (mechanics/11 §2) */
+export interface REdge { a: number; b: number; type: number; len: number; alive: boolean; city: number; lv?: number; m?: number }
+export const MOD = { TRAM: 1, BUS: 2 } as const;
+export const LEVEL_NAMES = ['Тоннель', 'Земля', 'Эстакада']; // индекс = lv + 1
 export const ROAD_TYPES = [
   { name: 'Улица', w: 9, speed: 13, lanes: 1, cost: 60, upkeep: 0.25, color: 0x5d6066 },
   { name: 'Проспект', w: 15, speed: 17, lanes: 2, cost: 140, upkeep: 0.6, color: 0x505359 },
@@ -50,12 +53,12 @@ export class RoadNet {
     for (const e of this.nodes[a].edges) { const E = this.edges[e]; if (E.alive && ((E.a === a && E.b === b) || (E.a === b && E.b === a))) return e; }
     return -1;
   }
-  addEdge(a: number, b: number, type: number, city = -1): number {
+  addEdge(a: number, b: number, type: number, city = -1, lv = 0, m = 0): number {
     if (a === b) return -1;
     const ex = this.edgeBetween(a, b); if (ex >= 0) { if (this.edges[ex].type < type) this.edges[ex].type = type; return ex; }
     const A = this.nodes[a], B = this.nodes[b];
     const id = this.edges.length;
-    const e: REdge = { a, b, type, len: Math.max(1, Math.hypot(A.x - B.x, A.z - B.z)), alive: true, city: city >= 0 ? city : (A.city >= 0 ? A.city : B.city) };
+    const e: REdge = { a, b, type, len: Math.max(1, Math.hypot(A.x - B.x, A.z - B.z)), alive: true, city: city >= 0 ? city : (A.city >= 0 ? A.city : B.city) }; if (lv) e.lv = lv; if (m) e.m = m;
     this.edges.push(e); A.edges.push(id); B.edges.push(id);
     this.edgeCells(e, k => { let c = this.edgeGrid.get(k); if (!c) this.edgeGrid.set(k, (c = [])); c.push(id); });
     this.version++; this.onEdgeAdded?.(id);
@@ -69,10 +72,10 @@ export class RoadNet {
     this.version++; this.onEdgeRemoved?.(id);
   }
   splitEdge(id: number, x: number, z: number): number {
-    const e = this.edges[id]; const { a, b, type, city } = e;
+    const e = this.edges[id]; const { a, b, type, city } = e; const lv = e.lv || 0, m = e.m || 0;
     const n = this.newNode(x, z, this.nodes[a].city >= 0 ? this.nodes[a].city : this.nodes[b].city);
     this.removeEdge(id); this.nodes[a].alive = true; this.nodes[b].alive = true;
-    this.addEdge(a, n, type, city); this.addEdge(n, b, type, city);
+    this.addEdge(a, n, type, city, lv, m); this.addEdge(n, b, type, city, lv, m);
     return n;
   }
   edgesNear(x: number, z: number, r: number): number[] {
@@ -99,7 +102,7 @@ export class RoadNet {
     return this.newNode(x, z, city);
   }
   // add road segment with automatic intersections. returns created edge ids
-  addRoad(ax: number, az: number, bx: number, bz: number, type: number, snap = 10, city = -1): number[] {
+  addRoad(ax: number, az: number, bx: number, bz: number, type: number, snap = 10, city = -1, lv = 0, m = 0): number[] {
     const na = this.pointNode(ax, az, snap, city);
     const nb = this.pointNode(bx, bz, snap, city);
     if (na === nb) return [];
@@ -114,6 +117,7 @@ export class RoadNet {
     for (const id of cand) {
       const e = this.edges[id]; if (!e.alive) continue;
       if (e.a === na || e.b === na || e.a === nb || e.b === nb) continue;
+      if ((e.lv || 0) !== lv) continue; // этап C: разные уровни пересекаются без перекрёстка (путепровод/тоннель)
       const C = this.nodes[e.a], D = this.nodes[e.b]; const sx = D.x - C.x, sz = D.z - C.z;
       const den = rx * sz - rz * sx; if (Math.abs(den) < 1e-9) continue;
       const t = ((C.x - A.x) * sz - (C.z - A.z) * sx) / den; const u = ((C.x - A.x) * rz - (C.z - A.z) * rx) / den;
@@ -130,23 +134,23 @@ export class RoadNet {
     }
     pts.sort((p, q) => p.t - q.t);
     const out: number[] = [];
-    for (let i = 0; i + 1 < pts.length; i++) { if (pts[i].n === pts[i + 1].n) continue; const id = this.addEdge(pts[i].n, pts[i + 1].n, type, city); if (id >= 0) out.push(id); }
+    for (let i = 0; i + 1 < pts.length; i++) { if (pts[i].n === pts[i + 1].n) continue; const id = this.addEdge(pts[i].n, pts[i + 1].n, type, city, lv, m); if (id >= 0) out.push(id); }
     return out;
   }
   serialize() {
     const N = this.nodes.length, E = this.edges.length;
     const nx = new Float32Array(N), nz = new Float32Array(N), nc = new Int16Array(N), nf = new Uint8Array(N);
     this.nodes.forEach((n, i) => { nx[i] = n.x; nz[i] = n.z; nc[i] = n.city; nf[i] = (n.alive ? 1 : 0) | (n.outside ? 2 : 0); });
-    const ea = new Int32Array(E), eb = new Int32Array(E), et = new Uint8Array(E), ec = new Int16Array(E);
-    this.edges.forEach((e, i) => { ea[i] = e.a; eb[i] = e.b; et[i] = e.alive ? e.type : 255; ec[i] = e.city; });
-    return { nx, nz, nc, nf, ea, eb, et, ec };
+    const ea = new Int32Array(E), eb = new Int32Array(E), et = new Uint8Array(E), ec = new Int16Array(E), el = new Int8Array(E), em = new Uint8Array(E);
+    this.edges.forEach((e, i) => { ea[i] = e.a; eb[i] = e.b; et[i] = e.alive ? e.type : 255; ec[i] = e.city; el[i] = e.lv || 0; em[i] = e.m || 0; });
+    return { nx, nz, nc, nf, ea, eb, et, ec, el, em };
   }
   static deserialize(d: any): RoadNet {
     const r = new RoadNet();
     for (let i = 0; i < d.nx.length; i++) { const id = r.newNode(d.nx[i], d.nz[i], d.nc[i]); r.nodes[id].alive = !!(d.nf[i] & 1); r.nodes[id].outside = !!(d.nf[i] & 2); }
     for (let i = 0; i < d.ea.length; i++) {
       if (d.et[i] === 255) { r.edges.push({ a: d.ea[i], b: d.eb[i], type: 0, len: 1, alive: false, city: d.ec[i] }); continue; }
-      r.addEdge(d.ea[i], d.eb[i], d.et[i], d.ec[i]);
+      r.addEdge(d.ea[i], d.eb[i], d.et[i], d.ec[i], d.el?.[i] || 0, d.em?.[i] || 0);
     }
     return r;
   }

@@ -9,7 +9,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "test:routes": "tsx tests/routes.test.ts",
-    "test:engage": "tsx tests/engage.test.ts"
+    "test:engage": "tsx tests/engage.test.ts",
+    "test:netgen": "tsx tests/netgen.test.ts",
+    "test:lines": "tsx tests/lines.test.ts",
+    "test:traffic": "tsx tests/traffic.test.ts"
   },
   "dependencies": {
     "@types/three": "^0.186.0",

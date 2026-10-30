@@ -88,7 +88,8 @@ export class Economy {
     const water = w.hAt(x, z) > 0 && (w.hAt(x + cs, z) < 0 || w.hAt(x - cs, z) < 0 || w.hAt(x, z + cs) < 0 || w.hAt(x, z - cs) < 0) ? 0.25 : 0;
     w.landValue[g] = clamp(0.2 + 1.3 * prox * scale + 0.5 * Math.min(1, roads / 6) + 0.6 * w.transitCov[g] + 0.35 * Math.min(1, park / 3) + 0.25 * Math.min(1, com / 60) + water - 0.9 * w.pollution[g], 0, 3);
   }
-  roadUpkeep() { const net = this.world.net; if (net.version === this.roadVer) return this.roadUpkeepDay; let s = 0; for (const e of net.edges) if (e.alive) { const A = net.nodes[e.a]; if (this.world.canBuild(A.x, A.z)) s += e.len * ROAD_TYPES[e.type].upkeep * BG.roadUpkeepMult / B.time.daysPerMonth; } this.roadVer = net.version; return (this.roadUpkeepDay = s); }
+  roadUpkeep() { const net = this.world.net; if (net.version + this.world.rail.version * 1e6 === this.roadVer) return this.roadUpkeepDay; let s = 0; for (const e of net.edges) if (e.alive) { const A = net.nodes[e.a]; if (this.world.canBuild(A.x, A.z)) { const RB = B.roads; const lvM = (e.lv || 0) > 0 ? RB.bridgeUpkeepMult : (e.lv || 0) < 0 ? RB.tunnelUpkeepMult : 1; const mU = ((e.m || 0) & 1 ? RB.modules.tramShared.upkeepPerM : 0) + ((e.m || 0) & 2 ? RB.modules.bus.upkeepPerM * 2 : 0); s += e.len * (ROAD_TYPES[e.type].upkeep * lvM + mU) * BG.roadUpkeepMult / B.time.daysPerMonth; } /* этап C: уровни и модули */ } /* этап D: содержание путей (BALANCE.rail.systems.*.trackUpkeepPerKmMonth; тоннель/эстакада — множители дорог) */ const R = this.world.rail; const SY = [B.rail.systems.rail, B.rail.systems.tram, B.rail.systems.metro]; for (const e of R.edges) if (e.alive) { const RB = B.roads; const lvM = (e.lv || 0) > 0 ? RB.bridgeUpkeepMult : (e.lv || 0) < 0 && e.type !== 2 ? RB.tunnelUpkeepMult : 1; s += e.len / 1000 * SY[e.type].trackUpkeepPerKmMonth * lvM / B.time.daysPerMonth; }
+    this.roadVer = net.version + R.version * 1e6; return (this.roadUpkeepDay = s); }
   /** 04-growth: фактор налога −(t−0.10)/(0.30−0.10) → множитель темпа */
   taxF(t: number) { return clamp(1 - (t / 100 - BG.taxNeutral) / (BG.taxMax - BG.taxNeutral), 0, 1.5); }
   damp(p: number) { return Math.pow(B.growth.sizeDampP0 / (B.growth.sizeDampP0 + p), B.growth.sizeDampGamma); }
@@ -106,6 +107,7 @@ export class Economy {
       st.cityTrips[c.id] = 0; st.cityTime[c.id] = 0; st.cityFree[c.id] = 0;
     }
     // transit (daily ridership model)
+    this.transit.autoTick = Math.floor(this.minutes / 1440) !== Math.floor((this.minutes - dtH * 60) / 1440); // раз в игровой день — автоподбор ТС
     const riders = this.transit.update(this.popG, this.jobG, this.cities.map(c => c.jobsTotal), this.cities.map(c => clamp(1 - c.congIdx * 0.4, 0.3, 1)), this.cities.map(c => c.price[7] / BASE_PRICE[7] * 80));
     for (const c of this.cities) c.transitRiders = 0;
     for (const ln of this.transit.lines) { const share = ln.riders / Math.max(1, ln.cities.length); for (const ci of ln.cities) this.cities[ci].transitRiders += share; L.fares += ln.revenue * dtD; if (ln.active) L.transit += ln.n * LINE_TYPES[ln.type].upkeep * dtD; }

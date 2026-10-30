@@ -3,24 +3,52 @@ import { Lots } from './Lots';
 import { createGroundMaterial, groundUniforms, surfaceWeights, groundSplatColor, blurVertexColors, patchFarFade } from '../../design/ground-material';
 import { buildJunction, padRadiusFor, roadMaterials, type Arm } from '../../design/road-kit';
 import { ROAD_SPEC, GROUND } from '../../design/palette';
+import { buildBridge, buildTunnelPortal } from '../../design/road-kit-v2';
+import { profileWidthOf } from '../world/roadProfiles';
 const SWC = new THREE.Color(ROAD_SPEC.color.sidewalk);
-const MEDC = new THREE.Color(GROUND.grass);
-const ASPH = [0x7d8190, 0x5b5f70, 0x4f5366, 0x8d8f99];
+const MEDC = new THREE.Color(GROUND.grass); const FARMINOR = new THREE.Color(0xb3b494);
+const ASPH = [0x7a7e8b, 0x454a5c, 0x3c4154, 0x868995]; // фикс «белых»: улица 0x9a9ea9→0x7a7e8b (на солнце и на светлом настиле читалась белой), иерархия сохранена; // V9: улица/переулок светлые, магистрали тёмные
+const WMUL = [0.9, 1.2, 1.15, 0.85]; // V9: магистрали шире, улицы уже (только полотно рёбер)
 /** Перекраска площадки перекрёстка дизайнера в нашу иерархию цветов асфальта. */
 function recolorJunction(g: THREE.BufferGeometry, mainType: number) {
   const ca = g.attributes.color as THREE.BufferAttribute; const tc = new THREE.Color(); const src = [ROAD_SPEC.color.pad, ...ROAD_SPEC.color.asphalt].map(h => new THREE.Color(h)); const dst = [ASPH[mainType], ...ASPH].map(h => new THREE.Color(h));
   for (let i = 0; i < ca.count; i++) { tc.setRGB(ca.getX(i), ca.getY(i), ca.getZ(i)); for (let k = 0; k < src.length; k++) if (Math.abs(tc.r - src[k].r) + Math.abs(tc.g - src[k].g) + Math.abs(tc.b - src[k].b) < 0.004) { ca.setXYZ(i, dst[k].r, dst[k].g, dst[k].b); break; } }
 }
-import { createStyledMaterial, styleUniforms } from '../../design/scene-preset';
+/** Фикс «белых артефактов» (запрос Степана): road-kit buildJunction обводит тротуаром/бордюром ВЕСЬ контур площадки,
+ *  включая торцы рукавов, — бордюр (y +0.135) ложится поперёк проезжей части выше асфальта (белая полоса на каждом выезде),
+ *  а у шоссе (тротуара нет, только обочина) кольцо тротуара торчит светлыми клиньями между рукавами. Здесь (без правки design/):
+ *  выкидываем треугольники тротуара/бордюра, центр которых лежит в коридоре рукава; у узлов с шоссе тротуар/бордюр
+ *  перекрашиваются в цвет обочины. Плюс площадка приподнята на +0.02 над рёбрами (z-fighting разных серых). */
+function cleanJunction(g: THREE.BufferGeometry, arms: Arm[], ox: number, oz: number, R: number): THREE.BufferGeometry {
+  const P = g.attributes.position as THREE.BufferAttribute, Cc = g.attributes.color as THREE.BufferAttribute;
+  const light = [ROAD_SPEC.color.sidewalk, ROAD_SPEC.color.curb].map(h => new THREE.Color(h)); const sh = new THREE.Color(ROAD_SPEC.color.shoulder);
+  const hasHw = arms.some(a => a.type === 2); const keep: number[] = []; const tc = new THREE.Color();
+  for (let t = 0; t < P.count; t += 3) {
+    tc.setRGB(Cc.getX(t), Cc.getY(t), Cc.getZ(t)); const isLight = light.some(l => Math.abs(tc.r - l.r) + Math.abs(tc.g - l.g) + Math.abs(tc.b - l.b) < 0.004);
+    if (isLight) { const cx = (P.getX(t) + P.getX(t + 1) + P.getX(t + 2)) / 3 - ox, cz = (P.getZ(t) + P.getZ(t + 1) + P.getZ(t + 2)) / 3 - oz;
+      let cut = false; for (const a of arms) { const al = cx * a.dx + cz * a.dz, ac = Math.abs(-cx * a.dz + cz * a.dx); if (al > R - 1 && ac < ROAD_SPEC.asphalt[a.type] / 2 + 0.6) { cut = true; break; } }
+      if (cut) continue; }
+    for (let q = 0; q < 3; q++) keep.push(t + q);
+  }
+  const pos = new Float32Array(keep.length * 3), col = new Float32Array(keep.length * 3), nrm = new Float32Array(keep.length * 3);
+  keep.forEach((v, i) => { let r = Cc.getX(v), gg = Cc.getY(v), b = Cc.getZ(v); tc.setRGB(r, gg, b);
+    if (hasHw && light.some(l => Math.abs(tc.r - l.r) + Math.abs(tc.g - l.g) + Math.abs(tc.b - l.b) < 0.004)) { r = sh.r; gg = sh.g; b = sh.b; }
+    pos.set([P.getX(v), P.getY(v) + 0.02, P.getZ(v)], i * 3); col.set([r, gg, b], i * 3); nrm.set([0, 1, 0], i * 3); });
+  const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.BufferAttribute(pos, 3)); o.setAttribute('color', new THREE.BufferAttribute(col, 3)); o.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); g.dispose(); return o;
+}
+import { createStyledMaterial, styleUniforms, applyScenePreset, SceneRig } from '../../design/scene-preset';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RailView } from './RailView';
 const h01 = (a: number, b: number) => { const q = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return q - Math.floor(q); };
+import { lotTheme, themedForLot, wallColor } from './Themes';
 import { ModelLibrary, createVehicle, VEHICLE_LENGTH } from '../../design/models';
-import { BUILD, ROADS } from '../../design/palette';
-const TERRAIN_F1 = 0xd9c36a, TERRAIN_F2 = 0x9fb84f, TERRAIN_F3 = 0xc79a5a;
+import { BUILD, ROADS, TERRAIN } from '../../design/palette';
+const FIELD_C = [GROUND.field, GROUND.fieldPlowed, TERRAIN.field2 ?? GROUND.field].map(h => new THREE.Color(h));
 function whiteColors(g: THREE.BufferGeometry) { const n = g.attributes.position.count; g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(1), 3)); }
 import { World } from '../world/World';
 import { TILE, CHUNK, K, Z, RES } from '../world/consts';
-import { ROAD_TYPES } from '../world/RoadNet';
+import { ROAD_TYPES, MOD } from '../world/RoadNet';
+import { BALANCE } from '../sim/balance';
 import { CameraCtl } from './Camera';
 import { hash2, clamp, smooth } from '../util';
 
@@ -31,19 +59,20 @@ export const QUALITIES: Quality[] = [
   { name: 'Среднее', shadows: true, pixelRatio: 1, viewDist: 6000, bldDist: 3500, agentCap: 4000 },
   { name: 'Высокое', shadows: true, pixelRatio: 1.5, viewDist: 10000, bldDist: 6000, agentCap: 8000 },
 ];
-interface Chunk { id: number; terrain?: THREE.Mesh; tStep: number; roads?: THREE.Mesh; marks?: THREE.Mesh; blds: THREE.Object3D[]; bDetail: number }
+interface Chunk { id: number; terrain?: THREE.Mesh; tStep: number; roads?: THREE.Mesh; bridges?: THREE.Mesh; rStep?: number; marks?: THREE.Mesh; blds: THREE.Object3D[]; bDetail: number }
 
 const C = (h: number) => new THREE.Color(h);
 const COL = { sand: C(0xd9c98f), grass: C(0x7fae55), grass2: C(0x6a9c48), forest: C(0x5f9148), rock: C(0x8a8378), snow: C(0xf2f2f2), fert: C(0xa9b85a), ore: C(0x9a7f6a), oil: C(0x5c5a52), under: C(0x6f8f7a),
   zr: C(0x8fd17a), zc: C(0x7aaee6), zi: C(0xe6c76a) };
 
 export class Renderer {
-  renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); cam: THREE.PerspectiveCamera; ctl: CameraCtl;
+  rig!: SceneRig; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); cam: THREE.PerspectiveCamera; ctl: CameraCtl;
   sun: THREE.DirectionalLight; hemi: THREE.HemisphereLight; water: THREE.Mesh;
   chunks = new Map<number, Chunk>();
   overview?: THREE.Mesh;
   overlay: Overlay = 'none';
   q: Quality = QUALITIES[1];
+  bridgeMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, color: 0xc4c0bc }); // color: приглушаем светлый бетон кита (настил/бордюры светились белым) // DoubleSide: у стенок bar() развёрнут порядок вершин (примечание Дезигнера)
   terrainMat: THREE.MeshLambertMaterial; roadMat: THREE.MeshLambertMaterial; bldMat: THREE.MeshLambertMaterial; plainMat: THREE.MeshLambertMaterial;
   geoBox: THREE.BoxGeometry; geoRoof: THREE.ConeGeometry; geoCyl: THREE.CylinderGeometry; geoTree: THREE.ConeGeometry;
   night = { value: 0 };
@@ -53,15 +82,17 @@ export class Renderer {
   edgeLoad: (e: number) => number = () => 0;
   dummy = new THREE.Object3D(); tmpC = new THREE.Color();
   stats = { tris: 0, calls: 0 };
+  /** этап D: режим метро (RailView, design/metro-view): поверхность полупрозрачная, тоннели/платформы видны «рентгеном» */
+  metroManual = false; rail!: RailView;
+  setMetroView(on: boolean) { if (!this.rail) return; this.rail.patch([this.terrainMat, this.roadMat, this.bldMat, this.plainMat, this.bridgeMat, this.marksMat]); this.rail.setOn(on); }
   constructor(public world: World, public canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.q.pixelRatio));
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.cam = new THREE.PerspectiveCamera(50, 1, 2, world.M * 3);
-    this.scene.background = new THREE.Color(0x9cc7ea); this.scene.fog = new THREE.Fog(0x9cc7ea, 4000, 14000);
-    this.hemi = new THREE.HemisphereLight(0xdfefff, 0x5a6a40, 1.4); this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xfff2dd, 2.2); this.sun.castShadow = true; this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.02; this.scene.add(this.sun); this.scene.add(this.sun.target);
+    // UI_AUDIT P2 п.16–17: пресет сцены «Пастила» — градиентный купол, персиковая дымка, ACES 1.05, sRGB, hemi/sun из WORLD
+    this.rig = applyScenePreset(this.renderer, this.scene, { time: 12, shadows: true, shadowSize: 2048, dist: 3000 });
+    this.hemi = this.rig.hemi; this.sun = this.rig.sun; this.scene.background = null;
     this.terrainMat = createGroundMaterial();
     this.roadMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     this.plainMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
@@ -102,7 +133,7 @@ export class Renderer {
     const N = { neutral: true };
     const train = (wag: 'wagonPassenger' | 'wagonFreight', n: number) => { const parts = [createVehicle('locomotive', N)]; let off = -VEHICLE_LENGTH.locomotive / 2; for (let q = 0; q < n; q++) { const g = createVehicle(wag, N); off -= VEHICLE_LENGTH[wag] / 2 + 0.6; g.translate(0, 0, off); off -= VEHICLE_LENGTH[wag] / 2; parts.push(g); } const m = mergeGeometries(parts); m.translate(0, 0, -off / 2 - VEHICLE_LENGTH.locomotive / 4); return m; };
     const geos = [createVehicle('car', N), createVehicle('truck', N), createVehicle('bus', N), createVehicle('tram', N), train('wagonPassenger', 2), train('wagonPassenger', 3)];
-    const vehMat = patchFarFade(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const vehMat = patchFarFade(createStyledMaterial()); // P2 п.15: фирменный материал и для транспорта
     const caps = [12000, 4000, 1500, 600, 400, 300];
     geos.forEach((g, i) => {
       g.rotateY(Math.PI / 2); g.translate(0, 0.15, 0);
@@ -115,19 +146,19 @@ export class Renderer {
     this.lightMesh = new THREE.InstancedMesh(this.lib.get({ type: 'prop', kind: 'signalLamp' } as any, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), 1200); this.lightMesh.count = 0; this.lightMesh.frustumCulled = false;
     this.lightMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(1200 * 3), 3); this.scene.add(this.lightMesh); // линзы светофоров (design/models signalLamp)
     this.signalPoles = new THREE.InstancedMesh(this.lib.get({ type: 'prop', kind: 'trafficLight' } as any, 0), this.styledMat, 1200); this.signalPoles.count = 0; this.signalPoles.frustumCulled = false; this.signalPoles.castShadow = true; this.scene.add(this.signalPoles);
-    this.scene.add(this.lineGroup); this.scene.add(this.toolGroup);
+    this.scene.add(this.lineGroup); this.scene.add(this.toolGroup); this.rail = new RailView(this.scene, () => this.world, this.bldMat, this.bridgeMat);
     this.buildOverview();
     { // V8: «юбка» земли за краем карты — нет жёсткого прямоугольника на фоне неба; уходит в туман
       const M = world.M, E = M * 4, parts: THREE.BufferGeometry[] = [];
-      for (const [x0, z0, x1, z1] of [[-E, -E, M + E, 0], [-E, M, M + E, M + E], [-E, 0, 0, M], [M, 0, M + E, M]]) { const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, 8, 8); g.rotateX(-Math.PI / 2); g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2); parts.push(g); }
+      for (const [x0, z0, x1, z1] of [[-E, -E, M + E, 0], [-E, M, M + E, M + E], [-E, 0, 0, M], [M, 0, M + E, M]]) { const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, 96, 96); /* этап A: густая кромка — не пересекает рельеф */ g.rotateX(-Math.PI / 2); g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2); parts.push(g); }
       const sk = mergeGeometries(parts)!; const pa = sk.attributes.position as THREE.BufferAttribute; const cl = new Float32Array(pa.count * 3); const gc = new THREE.Color(GROUND.grass);
-      for (let v = 0; v < pa.count; v++) { const x = pa.getX(v), z = pa.getZ(v); const ex = Math.min(Math.max(x, 1), M - 1), ez = Math.min(Math.max(z, 1), M - 1); const out = Math.hypot(x - ex, z - ez); pa.setY(v, out < 1 ? Math.max(world.hAt(ex, ez), 0.5) - 0.3 : 0.8); cl[v * 3] = gc.r; cl[v * 3 + 1] = gc.g; cl[v * 3 + 2] = gc.b; }
+      for (let v = 0; v < pa.count; v++) { const x = pa.getX(v), z = pa.getZ(v); const ex = Math.min(Math.max(x, 1), M - 1), ez = Math.min(Math.max(z, 1), M - 1); const out = Math.hypot(x - ex, z - ez); pa.setY(v, out < 1 ? Math.max(world.hAt(ex, ez), 0.5) - 1.2 : 0.8); /* этап A: кромка ниже земли карты — нет z-fighting */ cl[v * 3] = gc.r; cl[v * 3 + 1] = gc.g; cl[v * 3 + 2] = gc.b; }
       sk.setAttribute('color', new THREE.BufferAttribute(cl, 3)); sk.computeVertexNormals();
-      this.scene.add(new THREE.Mesh(sk, this.terrainMat));
+      this.scene.add(new THREE.Mesh(sk, createGroundMaterial({ polygonOffset: true, polygonOffsetFactor: 8, polygonOffsetUnits: 8 })));
     }
     this.resize(); window.addEventListener('resize', () => this.resize());
   }
-  setQuality(q: Quality) { this.q = q; this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pixelRatio)); this.renderer.shadowMap.enabled = q.shadows; this.sun.castShadow = q.shadows; this.scene.traverse(o => { if ((o as any).material) ((o as any).material as THREE.Material).needsUpdate = true; }); this.resize(); }
+  setQuality(q: Quality) { this.q = q; document.documentElement.classList.toggle('noblur', q.name === 'Низкое'); /* этап A: без backdrop-filter на низком */ this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pixelRatio)); this.renderer.shadowMap.enabled = q.shadows; this.sun.castShadow = q.shadows; this.scene.traverse(o => { if ((o as any).material) ((o as any).material as THREE.Material).needsUpdate = true; }); this.resize(); }
   resize() { const w = this.canvas.clientWidth || innerWidth, h = this.canvas.clientHeight || innerHeight; this.renderer.setSize(w, h, false); this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
   // ---------- picking ----------
   ray = new THREE.Raycaster(); ndc = new THREE.Vector2();
@@ -148,6 +179,7 @@ export class Renderer {
       const kd = w.kind[k]; const urban = w.bld[k] && kd !== K.PARK && kd !== K.EXTRACT ? (kd === K.RES && w.style[k] === 0 ? 0.55 : 1) : w.cityOf[k] && w.road[k] ? 0.6 : 0;
       groundSplatColor(surfaceWeights(Math.max(0, h), w.tileSlope(i, j), r === RES.FOREST ? 1 : 0, r === RES.FERTILE || (kd === K.EXTRACT && r === RES.FERTILE) ? 1 : 0, urban), out);
       if (kd === K.PARK) out.setHex(GROUND.yardGrass);
+      if (kd === K.EXTRACT && (r === RES.FERTILE || !r)) { /* P2 п.21: поля — сплатом рельефа (GROUND.field/fieldPlowed), полосы 3×1 участка, без плит */ const hq = hash2(Math.floor(i / 3), j, 19); out.lerp(FIELD_C[Math.floor(hq * 3)], 0.7); }
     }
     const z = w.zone[k];
     if (this.overlay === 'resources') { if (r === RES.ORE) out.copy(COL.ore).multiplyScalar(1.3); else if (r === RES.OIL) out.setHex(0x222222); else if (r === RES.FERTILE) out.setHex(0xe0e050); else if (r === RES.FOREST) out.setHex(0x1f6a1f); else out.lerp(new THREE.Color(0x888888), 0.5); return out; }
@@ -173,7 +205,7 @@ export class Renderer {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals();
     const mat = createGroundMaterial({ polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 }); // V8: тот же материал, что у земли и «юбки» — без светлого квадрата
     if (this.overview) { this.scene.remove(this.overview); this.overview.geometry.dispose(); }
-    this.overview = new THREE.Mesh(g, mat); this.overview.receiveShadow = false; this.scene.add(this.overview);
+    this.overview = new THREE.Mesh(g, mat); this.overview.receiveShadow = false; this.overview.renderOrder = 1; // V11: после земли чанков — перекрытые пиксели отсекаются по глубине this.scene.add(this.overview);
   }
   // ---------- chunk building ----------
   buildTerrain(ch: Chunk, step: number) {
@@ -201,22 +233,45 @@ export class Renderer {
   }
   padR(n: number) { const net = this.world.net; return padRadiusFor(net.nodes[n].edges.filter(e => net.edges[e].alive).map(e => ({ dx: 0, dz: 0, type: net.edges[e].type, len: 0 }))); }
   marksMat = roadMaterials().marks;
+  /** этап C: конструкция уровня ребра. Эстакада — пролёты road-kit-v2 buildBridge (настил, кессон, перила, опоры шагом pierSpacing)
+   *  там, где настил выше земли > 2 м; тоннель — порталы buildTunnelPortal там, где проезжая часть уходит под землю (−1.5 м); видимая часть портала 4.5 м. */
+  buildLevel(e: number, out: THREE.BufferGeometry[]) {
+    const w = this.world, net = w.net, E = net.edges[e], A = net.nodes[E.a], B = net.nodes[E.b]; const lv = E.lv || 0; const dx = (B.x - A.x) / E.len, dz = (B.z - A.z) / E.len;
+    const wd = Math.min(profileWidthOf(E.type), ROAD_SPEC.asphalt[E.type] + 2); const at = (s: number) => ({ x: A.x + dx * s, z: A.z + dz * s });
+    if (lv > 0) { const n = Math.max(1, Math.ceil(E.len / BALANCE.roads.pierSpacing)); for (let k = 0; k < n; k++) { const s0 = E.len * k / n, s1 = E.len * (k + 1) / n, sm = (s0 + s1) / 2; const p = at(sm);
+        const ya = w.roadY(at(s0).x, at(s0).z) + w.edgeOff(e, s0), yb = w.roadY(at(s1).x, at(s1).z) + w.edgeOff(e, s1);
+        if (Math.abs(ya - yb) > 0.15) { // рампа: плоский пролёт на высоте середины торчал над наклонным асфальтом светлой «ступенькой» — режем на куски по 6 м ниже полотна
+          const m = Math.ceil((s1 - s0) / 6); for (let q = 0; q < m; q++) { const u0 = s0 + (s1 - s0) * q / m, u1 = s0 + (s1 - s0) * (q + 1) / m; const pa = at(u0), pb = at(u1);
+            const y = Math.min(w.roadY(pa.x, pa.z) + w.edgeOff(e, u0), w.roadY(pb.x, pb.z) + w.edgeOff(e, u1)) - 0.25; const gy = w.hAt((pa.x + pb.x) / 2, (pa.z + pb.z) / 2); if (y - Math.max(gy, 0) < 2) continue;
+            try { out.push(buildBridge([pa, pb], wd, y, Math.min(gy, y - 3), q === m - 1 ? (u1 - u0) * 0.999 : 1e6)); } catch { /* */ } }
+          continue; }
+        const y = Math.min(ya, yb, w.roadY(p.x, p.z) + w.edgeOff(e, sm)) - 0.25; const gy = w.hAt(p.x, p.z); if (y - Math.max(gy, 0) < 2) continue;
+        try { out.push(buildBridge([at(s0), at(s1)], wd, y, Math.min(gy, y - 3), (s1 - s0) * 0.999)); } catch { /* вырожденный */ } } }
+    else { const steps = Math.ceil(E.len / 2); let prev = w.edgeOff(e, 0); for (let k = 1; k <= steps; k++) { const s = E.len * k / steps, o = w.edgeOff(e, s);
+        if ((prev > -1.5) !== (o > -1.5)) { const p = at(s); const t = o < prev ? { x: dx, z: dz } : { x: -dx, z: -dz }; try { out.push(buildTunnelPortal(p, t, wd, 6, w.roadY(p.x, p.z) + o - 0.2)); } catch { /* */ } }
+        prev = o; } }
+  }
   buildRoads(ch: Chunk) {
     const w = this.world, net = w.net; const cs = CHUNK * TILE; const cx = (ch.id % w.chunksN) * cs, cz = Math.floor(ch.id / w.chunksN) * cs;
     const pos: number[] = [], col: number[] = [], idx: number[] = []; const c = new THREE.Color();
+    const bridgeG: THREE.BufferGeometry[] = []; // этап C: мосты над водой (design/road-kit-v2 buildBridge, ширина по модульному профилю)
     const nodesDone = new Set<number>(); const jBase: THREE.BufferGeometry[] = [], jMarks: THREE.BufferGeometry[] = [];
     for (const e of net.edgesNear(cx + cs / 2, cz + cs / 2, cs * 0.75)) {
       const E = net.edges[e]; if (!E.alive) continue; const A = net.nodes[E.a], B = net.nodes[E.b];
       if (w.chunkOfPos((A.x + B.x) / 2, (A.z + B.z) / 2) !== ch.id) continue;
-      const hw = ROAD_SPEC.asphalt[E.type] / 2; const dx = (B.x - A.x) / E.len, dz = (B.z - A.z) / E.len; const px = -dz * hw, pz = dx * hw;
-      this.roadColor(e, E.type, c);
-      const steps = Math.max(1, Math.ceil(E.len / 14));
-      if (E.type !== 2) { // sidewalks
+      const lv = E.lv || 0; const Y = (x: number, z: number, sd: number) => w.roadY(x, z) + (lv ? w.edgeOff(e, sd) : 0); // этап C: уровень ребра
+      if (lv) this.buildLevel(e, bridgeG);
+      if (!lv && ch.rStep !== 2 && E.type !== 3) { let wet = 0, gmin = 1e9; for (let q = 1; q < 8; q++) { const h = w.hAt(A.x + (B.x - A.x) * q / 8, A.z + (B.z - A.z) * q / 8); gmin = Math.min(gmin, h); if (h < 0.3) wet++; }
+        if (wet >= 2) { const y = Math.max(w.roadY(A.x, A.z), w.roadY(B.x, B.z), 2.5); try { bridgeG.push(buildBridge([{ x: A.x, z: A.z }, { x: B.x, z: B.z }], Math.min(profileWidthOf(E.type), ROAD_SPEC.asphalt[E.type] + 2), y, Math.min(gmin, -1))); } catch { /* вырожденный */ } } }
+      const far = ch.rStep >= 2; const minor = E.type === 0 || E.type === 3; const hw = ROAD_SPEC.asphalt[E.type] / 2 * WMUL[E.type] * (far && minor ? 1.1 : 1); const dx = (B.x - A.x) / E.len, dz = (B.z - A.z) / E.len; const px = -dz * hw, pz = dx * hw;
+      this.roadColor(e, E.type, c); if (far && minor && this.overlay === 'none') c.lerp(FARMINOR, 0.75); // V9: вдали второстепенные улицы растворяются в массе кварталов
+      const steps = Math.max(1, Math.ceil(E.len / (lv ? 6 : 14)));
+      if (E.type !== 2 && !far && lv <= 0) { // sidewalks (на эстакаде — нет: тротуар шире настила висел в воздухе белой полосой)
         const sw = hw + ROAD_SPEC.curbW + ROAD_SPEC.sidewalk[E.type]; const qx = -dz * sw, qz = dx * sw; const b1 = pos.length / 3;
-        for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = w.roadY(x, z) + ROAD_SPEC.y.sidewalk - 0.1; pos.push(x + qx, y, z + qz, x - qx, y, z - qz); col.push(SWC.r, SWC.g, SWC.b, SWC.r, SWC.g, SWC.b); }
+        for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.sidewalk - 0.1; pos.push(x + qx, y, z + qz, x - qx, y, z - qz); col.push(SWC.r, SWC.g, SWC.b, SWC.r, SWC.g, SWC.b); }
         for (let s = 0; s < steps; s++) { const p = b1 + s * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
       }
-      for (let s = 0; s < steps; s++) { // bridge sides
+      for (let s = 0; s < steps && !lv; s++) { // bridge sides
         const x = A.x + (B.x - A.x) * (s + 0.5) / steps, z = A.z + (B.z - A.z) * (s + 0.5) / steps; if (w.hAt(x, z) > 0.8) continue;
         const xa = A.x + (B.x - A.x) * s / steps, za = A.z + (B.z - A.z) * s / steps, xb = A.x + (B.x - A.x) * (s + 1) / steps, zb = A.z + (B.z - A.z) * (s + 1) / steps;
         for (const sg of [1, -1]) { const b3 = pos.length / 3; const ox = px * sg * 1.05, oz = pz * sg * 1.05;
@@ -224,31 +279,37 @@ export class Renderer {
           idx.push(b3, b3 + 2, b3 + 1, b3 + 1, b3 + 2, b3 + 3, b3, b3 + 1, b3 + 2, b3 + 1, b3 + 3, b3 + 2); }
       }
       const base = pos.length / 3;
-      for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = w.roadY(x, z) + ROAD_SPEC.y.asphalt - 0.1 + E.type * 0.005; pos.push(x + px, y, z + pz, x - px, y, z - pz); col.push(c.r, c.g, c.b, c.r, c.g, c.b); }
+      for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.asphalt - 0.1 + E.type * 0.005; pos.push(x + px, y, z + pz, x - px, y, z - pz); col.push(c.r, c.g, c.b, c.r, c.g, c.b); }
       for (let s = 0; s < steps; s++) { const p = base + s * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
       // V8: проспект — зелёный разделитель, шоссе/проспект — белые краевые линии
-      const strip = (o0: number, o1: number, dy: number, cr: number, cg: number, cb: number) => { const b4 = pos.length / 3; for (let s2 = 0; s2 <= steps; s2++) { const x = A.x + (B.x - A.x) * s2 / steps, z = A.z + (B.z - A.z) * s2 / steps; const y = w.roadY(x, z) + ROAD_SPEC.y.asphalt - 0.1 + dy; pos.push(x - dz * o0, y, z + dx * o0, x - dz * o1, y, z + dx * o1); col.push(cr, cg, cb, cr, cg, cb); } for (let s2 = 0; s2 < steps; s2++) { const p = b4 + s2 * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); } };
-      if (this.overlay === 'none' && (E.type === 1 || E.type === 2)) {
+      const strip = (o0: number, o1: number, dy: number, cr: number, cg: number, cb: number) => { const b4 = pos.length / 3; for (let s2 = 0; s2 <= steps; s2++) { const x = A.x + (B.x - A.x) * s2 / steps, z = A.z + (B.z - A.z) * s2 / steps; const y = Y(x, z, E.len * s2 / steps) + ROAD_SPEC.y.asphalt - 0.1 + dy; pos.push(x - dz * o0, y, z + dx * o0, x - dz * o1, y, z + dx * o1); col.push(cr, cg, cb, cr, cg, cb); } for (let s2 = 0; s2 < steps; s2++) { const p = b4 + s2 * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); } };
+      if (this.overlay === 'none' && (E.type === 1 || E.type === 2)) { // разделитель + краевые линии (видны и вдали)
         if (E.type === 1) { const m = ROAD_SPEC.median[1] / 2; strip(-m, m, 0.03, MEDC.r, MEDC.g, MEDC.b); }
         for (const sg of [1, -1]) strip(sg * (hw - 0.55), sg * (hw - 0.4), 0.025, 0.92, 0.91, 0.88);
       }
+      // этап C: модули профиля — утопленные трамвайные рельсы по оси (road-kit-v2 embeddedTramRails, колея 1.524), автобусные полосы у бордюра
+      const em = E.m || 0;
+      if (em && this.overlay === 'none') {
+        if (em & MOD.TRAM) { const tc = E.type === 0 || E.type === 3 ? [0] : [-hw * 0.28, hw * 0.28]; for (const o of tc) for (const r of [-0.762, 0.762]) { strip(o + r - 0.06, o + r + 0.06, 0.035, 0.55, 0.56, 0.6); strip(o + r - 0.16, o + r - 0.06, 0.033, 0.22, 0.22, 0.24); } }
+        if (em & MOD.BUS) for (const sg of [1, -1]) strip(sg * (hw - 3.1), sg * (hw - 0.4), 0.03, 0.62, 0.27, 0.24);
+      }
       // center dashes for avenues/highways
-      if (E.type !== 3 && E.type !== 1) {
+      if (E.type === 2 && !far) { // V9: осевая только у шоссе; у проспекта — разделитель, у улиц нет
         const lc = this.overlay === 'traffic' ? c : new THREE.Color(0xd8d8c8);
         const nd = Math.floor(E.len / 9);
         const jA = net.nodes[E.a].edges.length >= 3 ? this.padR(E.a) + 16 : 0, jB = net.nodes[E.b].edges.length >= 3 ? this.padR(E.b) + 16 : 0;
         for (let s = 1; s < nd - 1; s += 1) { const t0 = (s * 9) / E.len, t1 = (s * 9 + 3) / E.len; if (t1 > 1) break; if (s * 9 < jA || s * 9 + 3 > E.len - jB) continue; const b2 = pos.length / 3;
-          for (const t of [t0, t1]) { const x = A.x + (B.x - A.x) * t, z = A.z + (B.z - A.z) * t; const y = w.roadY(x, z) + 0.06 + E.type * 0.02; pos.push(x - dz * 0.25, y, z + dx * 0.25, x + dz * 0.25, y, z - dx * 0.25); col.push(lc.r, lc.g, lc.b, lc.r, lc.g, lc.b); }
+          for (const t of [t0, t1]) { const x = A.x + (B.x - A.x) * t, z = A.z + (B.z - A.z) * t; const y = Y(x, z, E.len * t) + 0.06 + E.type * 0.02; pos.push(x - dz * 0.25, y, z + dx * 0.25, x + dz * 0.25, y, z - dx * 0.25); col.push(lc.r, lc.g, lc.b, lc.r, lc.g, lc.b); }
           idx.push(b2, b2 + 2, b2 + 1, b2 + 1, b2 + 2, b2 + 3); }
       }
       for (const nn of [E.a, E.b]) {
         if (nodesDone.has(nn)) continue; const N0 = net.nodes[nn]; if (w.chunkOfPos(N0.x, N0.z) !== ch.id) continue; nodesDone.add(nn);
         const live = N0.edges.filter(e2 => net.edges[e2].alive);
-        const y0 = w.roadY(N0.x, N0.z) - 0.1;
-        if (live.length >= 3) { // эталонный перекрёсток дизайнера: площадка со скруглениями, бордюр, зебры, стоп-линии
+        const y0 = w.roadY(N0.x, N0.z) - 0.1 + w.nodeLift(nn);
+        if (live.length >= 3 && !far) { // эталонный перекрёсток дизайнера: площадка со скруглениями, бордюр, зебры, стоп-линии
           const R = this.padR(nn);
           const arms: Arm[] = live.map(e2 => { const E2 = net.edges[e2]; const o = net.nodes[E2.a === nn ? E2.b : E2.a]; return { dx: (o.x - N0.x) / E2.len, dz: (o.z - N0.z) / E2.len, type: E2.type, len: Math.max(R + 2, Math.min(E2.len / 2, R + 16)) }; });
-          try { const J = buildJunction(N0.x, N0.z, arms, y0); recolorJunction(J.base, Math.max(...arms.map(a => a.type === 3 ? -1 : a.type)) < 0 ? 3 : Math.max(...arms.map(a => a.type === 3 ? -1 : a.type))); jBase.push(J.base); jMarks.push(J.marks); } catch { /* вырожденный узел — пропуск */ }
+          try { const J = buildJunction(N0.x, N0.z, arms, y0); recolorJunction(J.base, Math.max(...arms.map(a => a.type === 3 ? -1 : a.type)) < 0 ? 3 : Math.max(...arms.map(a => a.type === 3 ? -1 : a.type))); jBase.push(cleanJunction(J.base, arms, N0.x, N0.z, R)); const mk = J.marks.attributes.position as THREE.BufferAttribute; for (let i = 0; i < mk.count; i++) mk.setY(i, mk.getY(i) + 0.02); jMarks.push(J.marks); } catch { /* вырожденный узел — пропуск */ }
           continue;
         }
         let r = 0, rs = 0, mt = 0, me = N0.edges[0]; for (const e2 of live) { const t = net.edges[e2].type; r = Math.max(r, ROAD_SPEC.asphalt[t] / 2); rs = Math.max(rs, ROAD_SPEC.asphalt[t] / 2 + ROAD_SPEC.curbW + ROAD_SPEC.sidewalk[t]); if (t >= mt) { mt = t; me = e2; } }
@@ -256,7 +317,7 @@ export class Renderer {
         const disc = (rad: number, y: number, cr: number, cg: number, cb: number) => { const b0 = pos.length / 3; pos.push(N0.x, y, N0.z); col.push(cr, cg, cb);
           for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; pos.push(N0.x + Math.cos(a) * rad, y, N0.z + Math.sin(a) * rad); col.push(cr, cg, cb); }
           for (let k = 0; k < 16; k++) idx.push(b0, b0 + 1 + ((k + 1) % 16), b0 + 1 + k); };
-        if (rs > r) disc(rs, y0 + ROAD_SPEC.y.sidewalk - 0.005, SWC.r, SWC.g, SWC.b);
+        if (rs > r && !far && !live.some(e2 => net.edges[e2].type === 2) && live.every(e2 => (net.edges[e2].lv || 0) === 0)) disc(rs, y0 + ROAD_SPEC.y.sidewalk - 0.005, SWC.r, SWC.g, SWC.b);
         disc(r, y0 + ROAD_SPEC.y.asphalt - 0.005, c.r, c.g, c.b);
       }
     }
@@ -267,14 +328,18 @@ export class Renderer {
     // перекрёстки: базовый слой сливаем в общий меш дорог, разметку — в отдельный меш ch.marks
     let G: THREE.BufferGeometry = g;
     if (jBase.length) { const gi = g.toNonIndexed(); G = mergeGeometries([gi, ...jBase]) || g; gi.dispose(); jBase.forEach(x => x.dispose()); }
+    if (ch.bridges) { this.scene.remove(ch.bridges); ch.bridges.geometry.dispose(); ch.bridges = undefined; }
+    if (bridgeG.length) { const bg = mergeGeometries(bridgeG.map(g => g.index ? g.toNonIndexed() : g)); if (bg) { ch.bridges = new THREE.Mesh(bg, this.bridgeMat); ch.bridges.castShadow = ch.bridges.receiveShadow = true; this.scene.add(ch.bridges); } }
     if (ch.marks) { this.scene.remove(ch.marks); ch.marks.geometry.dispose(); ch.marks = undefined; }
     if (jMarks.length) { const mg = mergeGeometries(jMarks); jMarks.forEach(x => x.dispose()); if (mg) { ch.marks = new THREE.Mesh(mg, this.marksMat); ch.marks.renderOrder = ROAD_SPEC.renderOrder.marking; this.scene.add(ch.marks); } }
     if (G !== g) g.dispose();
     const g2 = G;
     if (ch.roads) { ch.roads.geometry.dispose(); ch.roads.geometry = g2; } else { ch.roads = new THREE.Mesh(g2, this.roadMat); ch.roads.receiveShadow = true; this.scene.add(ch.roads); }
+    ch.roads.visible = (g2.attributes.position?.count || 0) > 0; // V11: пустые чанки дорог не рисуем (сотни пустых draw call вдали)
   }
   /** Застройка чанка: здания строго по кварталам, фасадом к улице, с отступом; район = единый тип/палитра; высота — сглаженный градиент. */
   lots!: Lots;
+  /** этап H: здания по темам Дезигнера (false — старые генераторы v2); счётчик построенных по темам */ themesOn = true; themeStats: Record<string, number> = {};
   styledMat = patchFarFade(createStyledMaterial());
   buildBuildings(ch: Chunk, detail: number) {
     if (!this.lots) this.lots = new Lots(this.world);
@@ -285,12 +350,23 @@ export class Renderer {
     const boxes: number[][] = [], roofs: number[][] = [], cyls: number[][] = [], trees: number[][] = [];
     const models = new Map<string, number[][]>(); // ключ модели → [x,y,z,sx,sy,sz,rot,color]
     const addM = (key: string, a: number[]) => { let l = models.get(key); if (!l) models.set(key, l = []); l.push(a); };
+    // V11: дальний LOD — не инстансы-коробки, а один слитый меш на чанк (крыши жадно сливаются в полосы, скрытые стены и днища не рисуются)
+    const i0 = cx * CHUNK, j0 = cz * CHUNK; const farT = new Float32Array(CHUNK * CHUNK).fill(NaN), farG = new Float32Array(CHUNK * CHUNK), farC = new Uint32Array(CHUNK * CHUNK);
+    const farSet = (i: number, j: number, g: number, h: number, col: number) => { const li = (j - j0) * CHUNK + (i - i0); farG[li] = g; farT[li] = Math.round((g + h) * 2) / 2; farC[li] = col; };
     const pick = (arr: number[], h: number) => arr[Math.floor(h * arr.length) % arr.length];
+    // V10: цвет района (8×8 тайлов) — насыщенные пятна: частный сектор тёплый, многоэтажки светлые, центр голубоватый, промзона коричневая
+    const distCol = (kd: number, i: number, j: number, sm: number) => { const h = hash2(Math.floor(i / 8), Math.floor(j / 8), 7);
+      return kd === K.COM ? pick(BUILD.comWalls, h) : kd === K.IND ? pick(BUILD.indWalls, h) : sm <= 2 ? pick(BUILD.resWalls, h) : pick(BUILD.midWalls.concat(BUILD.towerWalls), h); }; // P2 п.19: только палитра BUILD
     // сглаженная этажность: среднее по 5×5 участкам того же типа (плавный градиент от центра)
     const smoothL = (i: number, j: number, kd: number) => { let s = 0, n = 0; for (let b = -2; b <= 2; b++) for (let a = -2; a <= 2; a++) { const ii = i + a, jj = j + b; if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue; const k2 = jj * N + ii; if (w.bld[k2] && w.kind[k2] === kd) { s += w.bld[k2]; n++; } } return n ? s / n : 1; };
     for (let j = cz * CHUNK; j < Math.min(N, cz * CHUNK + CHUNK); j++) for (let i = cx * CHUNK; i < Math.min(N, cx * CHUNK + CHUNK); i++) {
       const k = j * N + i; const L = w.bld[k]; const x = (i + 0.5) * TILE, z = (j + 0.5) * TILE;
       if (!L) {
+        // V10: на дальнем LOD мелкие улицы/пустыри внутри застройки заливаются плитой цвета района — кварталы сливаются в пятна
+        if (detail === 0 && w.cityOf[k] && (w.road[k] === 0 || w.road[k] === 1 || w.road[k] === 4)) {
+          let nb = 0, nk = -1; for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + a, jj = j + b; if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue; const k2 = jj * N + ii; if (w.bld[k2]) { nb++; nk = k2; } }
+          if (nb >= 2) { farSet(i, j, w.hAt(x, z) - 0.3, 1.6, distCol(w.kind[nk], i, j, 1)); continue; }
+        }
         // лес — только вне городов
         if (detail >= 2 && w.resource[k] === RES.FOREST && !w.cityOf[k] && !w.road[k] && !w.zone[k] && w.tileH(i, j) > 1) {
           for (let t = 0; t < 2; t++) { const tx = x + (hash2(i, j, 10 + t) - 0.5) * 12, tz = z + (hash2(i, j, 20 + t) - 0.5) * 12; const sc = 3 + hash2(i, j, 30 + t) * 3; trees.push([tx, w.hAt(tx, tz) - 0.5, tz, sc, sc * 2.6, sc, 0, 0x2f6e4a]); }
@@ -300,13 +376,13 @@ export class Renderer {
       const kd = w.kind[k]; const st = w.style[k];
       if (detail === 0 && (kd === K.RES || kd === K.COM || kd === K.IND)) { // V8 блочный LOD: дальний квартал = масса одного цвета по району, высота сглажена
         const sm = smoothL(i, j, kd); const hgt = kd === K.IND ? 7 : Math.min(60, 2.5 + sm * 2.6); const dz = hash2(Math.floor(i / 4), Math.floor(j / 4), 5);
-        const col = kd === K.RES ? (sm <= 2 ? pick([0xd9c7a8, 0xcfbfa4, 0xc8b59a], dz) : pick([0xd8d2c6, 0xcfd3d6, 0xd6cbbb], dz)) : kd === K.COM ? pick([0xc4ccd6, 0xbfc7cf], dz) : 0xaaa79f;
-        boxes.push([x, w.hAt(x, z) - 0.3, z, 13.5, sm <= 2 && kd === K.RES ? 4 : hgt, 13.5, 0, col]); continue;
+        const col = distCol(kd, i, j, sm); void dz;
+        farSet(i, j, w.hAt(x, z) - 0.3, sm <= 2 && kd === K.RES ? 3.5 : hgt, col); continue; // V9: тайлы смыкаются в сплошную массу района
       }
       if (kd === K.RES || kd === K.COM || kd === K.IND) { // жилые/коммерческие/промышленные — по участкам (Lots); внутренность квартала — двор
         if (detail >= 2 && kd !== K.IND && this.lots && !this.lots.occ.has(Math.floor(x / 4) * 100003 + Math.floor(z / 4)) && !w.road[k]) {
           const y = w.hAt(x, z) - 0.2; const hq = hash2(i, j, 77);
-          if (hq < 0.22) boxes.push([x, y, z, 9, 2.4, 5, 0, 0xb9b3a8]); // гаражи/сараи
+          if (hq < 0.22) boxes.push([x, y, z, 9, 2.4, 5, 0, BUILD.concrete]); // гаражи/сараи
           else if (hq < 0.34) boxes.push([x, y, z, 10, 0.25, 10, 0, 0xd9c7a0]); // детская площадка
           for (let q = 0; q < 2; q++) if (hash2(i, j, 80 + q) < 0.75) { const s2 = 2 + hash2(i, j, 82 + q) * 1.5; trees.push([x + (hash2(i, j, 84 + q) - 0.5) * 11, y, z + (hash2(i, j, 86 + q) - 0.5) * 11, s2, s2 * 2.4, s2, 0, pick([0x5ea845, 0x4c9a48, 0x77b84e], hash2(i, j, 88 + q))]); }
         }
@@ -331,7 +407,7 @@ export class Renderer {
       const resWall = pick(BUILD.resWalls, dist(3)), midWall = pick(BUILD.midWalls, dist(4)), towWall = pick(BUILD.towerWalls, dist(5));
       if (kd === K.RES) {
         if (st === 1) { // трущобы: низкие лачуги, приглушённые цвета, по уличной линии
-          const P = place(9, 8, 1.5); boxes.push([P.ox, y, P.oz, P.w2, 2.6, P.d2, rot, pick([0x9a8f80, 0x8a8478, 0xa59680], dist(6))]); if (detail >= 1) roofs.push([P.ox, y + 2.6, P.oz, P.w2, 0.9, P.d2, rot, 0x6b6258]);
+          const P = place(9, 8, 1.5); boxes.push([P.ox, y, P.oz, P.w2, 2.6, P.d2, rot, pick([BUILD.plinth, BUILD.rooftop, BUILD.depotWalls], dist(6))]); if (detail >= 1) roofs.push([P.ox, y + 2.6, P.oz, P.w2, 0.9, P.d2, rot, 0x6b6258]);
         } else if (Lv <= 2 && st !== 2) { // частный дом
           if (hash2(i, j, 61) < 0.15) continue; const P = place(10, 9, 4); if (detail >= 2) addM('house#' + Math.floor(dist(7) * 4), [P.ox, y, P.oz, P.w2 / 9, 1, P.d2 / 8, rot, resWall]);
           else { boxes.push([P.ox, y, P.oz, P.w2, 3 * Lv, P.d2, rot, resWall]); roofs.push([P.ox, y + 3 * Lv, P.oz, P.w2, 2.4, P.d2, rot, pick(BUILD.resRoofs, dist(8))]); }
@@ -342,7 +418,7 @@ export class Renderer {
           if (detail >= 1) roofs.push([P.ox, y + fl * 3.2 + 0.8, P.oz, P.w2, 3, P.d2, rot, pick(BUILD.resRoofs, dist(10))]);
         } else if (Lv <= 9 || st === 2) { // средняя этажность / панельный район (единая этажность района)
           const fl = st === 2 ? (dist(11) < 0.5 ? 9 : 5) : Math.max(3, Math.min(8, Lv)); const P = place(15, 12, 3);
-          if (detail >= 2) addM('resMid#' + fl, [P.ox, y, P.oz, P.w2 / 18, 1, P.d2 / 12, rot, st === 2 ? pick([0xe2e0d4, 0xcfd6d8, 0xd8c9b0], dist(12)) : midWall]);
+          if (detail >= 2) addM('resMid#' + fl, [P.ox, y, P.oz, P.w2 / 18, 1, P.d2 / 12, rot, st === 2 ? pick(BUILD.towerWalls, dist(12)) : midWall]);
           else boxes.push([P.ox, y, P.oz, P.w2, fl * 3.2 + 0.8, P.d2, rot, midWall]);
         } else { // башни: только у центра, высота — сглаженная
           const fl = Math.min(30, Math.round(Lv * 1.1)); const P = place(15, 15, 3);
@@ -357,10 +433,10 @@ export class Renderer {
         else boxes.push([P.ox, y, P.oz, P.w2, 6 + Lv, P.d2, rot, pick(BUILD.indWalls, dist(18))]);
       } else if (kd === K.EXTRACT) {
         const r = w.resource[k];
-        if (r === RES.FERTILE || !r) boxes.push([x, y, z, 15.8, 0.4, 15.8, rot, pick([TERRAIN_F1, TERRAIN_F2, TERRAIN_F3], dist(19))]);
-        else if (r === RES.FOREST) { boxes.push([x, y, z, 12, 4, 8, rot, 0x8a6a42]); cyls.push([x - 4, y, z + 4, 3, 2, 3, 0, 0x6d4c2c]); }
-        else if (r === RES.ORE) { boxes.push([x, y, z, 12, 6, 12, rot, 0x6f6a66]); boxes.push([x + 3, y + 6, z, 3, 12, 3, rot, 0x4f4a46]); }
-        else { boxes.push([x, y, z, 4, 3, 10, rot, 0x2a2a2a]); cyls.push([x, y, z - 5, 2, 7, 2, 0, 0x3a3a3a]); }
+        if (r === RES.FERTILE || !r) { /* п.21: поле рисуется рельефом */ }
+        else if (r === RES.FOREST) { boxes.push([x, y, z, 12, 4, 8, rot, BUILD.depotWalls]); cyls.push([x - 4, y, z + 4, 3, 2, 3, 0, BUILD.door]); }
+        else if (r === RES.ORE) { boxes.push([x, y, z, 12, 6, 12, rot, BUILD.indWalls[1]]); boxes.push([x + 3, y + 6, z, 3, 12, 3, rot, BUILD.chimney]); }
+        else { boxes.push([x, y, z, 4, 3, 10, rot, BUILD.indRoof[1]]); cyls.push([x, y, z - 5, 2, 7, 2, 0, BUILD.indAccent]); }
       } else if (kd === K.WAREHOUSE) { const P = place(15.5, 15, 1); if (detail >= 2) addM('warehouse#0', [P.ox, y, P.oz, P.w2 / 36, 1, P.d2 / 22, rot, 0xffffff]); else boxes.push([P.ox, y, P.oz, P.w2, 9, P.d2, rot, 0xb0b8c0]); }
       else if (kd === K.PARK) { boxes.push([x, y, z, 16, 0.4, 16, rot, 0x7fb352]); if (detail >= 2) { const n = 2 + Math.floor(hv * 3); for (let q = 0; q < n; q++) { const s2 = 2 + hash2(i, j, 30 + q) * 2; trees.push([x + (hash2(i, j, 31 + q) - 0.5) * 11, y, z + (hash2(i, j, 32 + q) - 0.5) * 11, s2, s2 * 2.4, s2, 0, pick([0x5ea845, 0x4c9a48, 0x77b84e], hash2(i, j, 33 + q))]); } } }
       else if (kd === K.STATION) { if (detail >= 2) addM('station#0', [x, y, z, 15 / 48, 1, 15 / 22, rot, 0xffffff]); else boxes.push([x, y, z, 15, 6, 12, rot, BUILD.stationWalls]); }
@@ -388,6 +464,13 @@ export class Renderer {
           const W = L.w, D = L.d;
           const cc = w.cities[w.cityOf[k] - 1] || w.cities[0]; const dn = cc ? Math.min(1, Math.hypot(L.x - cc.x, L.z - cc.z) / (cc.r * 0.45)) : 1; const grad = 1.35 - 0.75 * dn * dn; // пик в центре, спад к краю
           if (detail < 1 && Lv < 3) continue;
+          if (this.themesOn && L.cls !== 'slum' && L.cls !== 'ind') { // этап H: темы Дезигнера по участку
+            const th = lotTheme(w, L.x, L.z, L.cls); const dens = Math.max(0, Math.min(1, L.cls === 'house' ? hv : L.cls === 'tower' || L.cls === 'office' ? (Lv * grad - 4) / 26 : (Lv - 1) / 8));
+            const r = themedForLot(th, L.cls, W, D, dens, L.cls === 'panel' && dist(11) > 0.4);
+            if (r) { const fs = BALANCE.themes.floorStep; const opts = { theme: r.theme, kind: r.kind, width: r.dims.w, depth: r.dims.d, floors: Math.max(1, Math.round(r.dims.floors / fs) * fs), seed: Math.floor(hv2 * 4), neutral: true, detail: detail >= 2 && !(r.theme === 'base' && String(r.kind).includes('office')) ? 1 : 0, lit: 0.5 };
+              const ox = L.x + Math.sin(rot) * r.offsetZ, oz = L.z + Math.cos(rot) * r.offsetZ; addM('themed#' + JSON.stringify(opts), [ox, y, oz, 1, 1, 1, rot, wallColor(r.theme, hv2, cB(BUILD.midWalls, 4))]); this.themeStats[r.theme] = (this.themeStats[r.theme] || 0) + 1; continue; }
+            this.themeStats.legacy = (this.themeStats.legacy || 0) + 1;
+          }
           switch (L.cls) {
             case 'slum': boxes.push([L.x, y, L.z, W, 2.6, D, rot, cB([0x9a8f80, 0x8a8478, 0xa59680, 0x8f9590], 6)]); if (detail >= 1) roofs.push([L.x, y + 2.6, L.z, W, 0.9, D, rot, 0x6b6258]); break;
             case 'house': {
@@ -413,8 +496,31 @@ export class Renderer {
       m.castShadow = cast && this.q.shadows; m.receiveShadow = true; m.computeBoundingSphere(); this.scene.add(m); ch.blds.push(m);
     };
     for (const t of trees) { const k = t[3] / 2.6; addM(t[7] === 0x2f6e4a ? 'tree#conifer' : 'tree#deciduous', [t[0], t[1], t[2], k, k, k, hash2(t[0] | 0, t[2] | 0, 7) * 6.28, 0xffffff]); }
+    if (detail === 0) { const m = this.buildFarMass(farT, farG, farC, i0, j0); if (m) { this.scene.add(m); ch.blds.push(m); } }
     mk(this.geoBox, boxes, true); mk(this.geoRoof, roofs, true); mk(this.geoCyl, cyls, true);
     for (const [key, arr] of models) mk(this.modelGeo(key), arr, true, this.styledMat); // модели дизайнера — фирменный материал (окна ночью по glow)
+  }
+  buildFarMass(T: Float32Array, G: Float32Array, C: Uint32Array, i0: number, j0: number): THREE.Mesh | null {
+    const P: number[] = [], Nn: number[] = [], Cl: number[] = []; const col = this.tmpC;
+    const quad = (v: number[][], nx: number, ny: number, nz: number, c: number) => { col.setHex(c); for (const k of [0, 1, 2, 0, 2, 3]) { P.push(...v[k]); Nn.push(nx, ny, nz); Cl.push(col.r, col.g, col.b); } };
+    const n = CHUNK; const at = (a: number, b: number) => (a < 0 || b < 0 || a >= n || b >= n) ? NaN : T[b * n + a];
+    for (let b = 0; b < n; b++) for (let a = 0; a < n; a++) {
+      const k = b * n + a; const t = T[k]; if (Number.isNaN(t)) continue;
+      // крыша: жадная полоса по x (одинаковые высота и цвет); начало полосы — только если слева другой
+      if (!(a > 0 && T[k - 1] === t && C[k - 1] === C[k])) { let e = a; while (e + 1 < n && T[k + e + 1 - a] === t && C[k + e + 1 - a] === C[k]) e++;
+        const x0 = (i0 + a) * TILE - 0.1, x1 = (i0 + e + 1) * TILE + 0.1, z0 = (j0 + b) * TILE - 0.1, z1 = (j0 + b + 1) * TILE + 0.1;
+        quad([[x0, t, z0], [x0, t, z1], [x1, t, z1], [x1, t, z0]], 0, 1, 0, C[k]); }
+      // стены только там, где сосед ниже (внутренние скрытые грани не рисуем); затемнение граней вместо освещения не нужно — Lambert
+      const x0 = (i0 + a) * TILE, x1 = x0 + TILE, z0 = (j0 + b) * TILE, z1 = z0 + TILE; const g = G[k];
+      const side = (nt: number, v: (lo: number) => number[][], nx: number, nz: number) => { const lo = Number.isNaN(nt) ? g : Math.max(g, nt); if (t - lo > 0.3) quad(v(lo), nx, 0, nz, C[k]); };
+      side(at(a + 1, b), lo => [[x1, lo, z0], [x1, t, z0], [x1, t, z1], [x1, lo, z1]], 1, 0);
+      side(at(a - 1, b), lo => [[x0, lo, z1], [x0, t, z1], [x0, t, z0], [x0, lo, z0]], -1, 0);
+      side(at(a, b + 1), lo => [[x1, lo, z1], [x1, t, z1], [x0, t, z1], [x0, lo, z1]], 0, 1);
+      side(at(a, b - 1), lo => [[x0, lo, z0], [x0, t, z0], [x1, t, z0], [x1, lo, z0]], 0, -1);
+    }
+    if (!P.length) return null;
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(Nn, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(Cl, 3)); geo.computeBoundingSphere();
+    const m = new THREE.Mesh(geo, this.bldMat); m.receiveShadow = true; (m as any).dispose = () => geo.dispose(); return m;
   }
   modelGeo(key: string): THREE.BufferGeometry {
     try { return this.modelGeo0(key); } catch (e) { if (!this.warned) { this.warned = true; console.warn('design model failed, fallback box', key, e); } return this.geoBox; }
@@ -422,6 +528,7 @@ export class Renderer {
   warned = false;
   modelGeo0(key: string): THREE.BufferGeometry {
     const [kind, v] = key.split('#'); const opts: any = { neutral: true };
+    if (kind === 'themed') return this.lib.get({ type: 'themed', opts: JSON.parse(v) } as any, 0);
     if (kind === 'tree') return this.lib.get({ type: 'tree', kind: v as any, opts: {} } as any, 0);
     if (kind === 'prop') return this.lib.get({ type: 'prop', kind: v as any } as any, 0);
     if (kind === 'resMid') { opts.floors = v.startsWith('h') ? +v.slice(1) : +v; opts.lotW = 18; opts.lotD = 12; return this.lib.get({ type: 'building', kind: 'resMid', opts }, v.startsWith('h') ? 1 : 0); }
@@ -434,14 +541,14 @@ export class Renderer {
     delete opts.neutral; return this.lib.get({ type: 'building', kind: kind as any, opts }, 0);
   }
   disposeChunk(ch: Chunk) {
-    for (const m of [ch.terrain, ch.roads, ch.marks]) if (m) { this.scene.remove(m); m.geometry.dispose(); }
+    for (const m of [ch.terrain, ch.roads, ch.marks, ch.bridges]) if (m) { this.scene.remove(m); m.geometry.dispose(); }
     for (const o of ch.blds) { this.scene.remove(o); (o as THREE.InstancedMesh).dispose?.(); }
   }
   refreshAll() { for (const ch of this.chunks.values()) { this.world.dirtyTerrain.add(ch.id); this.world.dirtyRoads.add(ch.id); } this.buildOverview(); }
   refreshRoads() { for (const ch of this.chunks.values()) this.world.dirtyRoads.add(ch.id); }
   updateChunks() {
     const w = this.world; const cs = CHUNK * TILE; const tx = this.ctl.tx, tz = this.ctl.tz;
-    const vd = Math.min(this.q.viewDist, Math.max(2500, this.ctl.dist * 2.5));
+    const vd = Math.min(this.q.viewDist, Math.max(3000, this.ctl.dist * 3)); // этап A: дальше видно участки
     const want = new Map<number, number>();
     const r = Math.ceil(vd / cs); const ci = Math.floor(tx / cs), cj = Math.floor(tz / cs);
     for (let a = ci - r; a <= ci + r; a++) for (let b = cj - r; b <= cj + r; b++) {
@@ -449,31 +556,33 @@ export class Renderer {
     }
     for (const [id, ch] of this.chunks) if (!want.has(id)) { this.disposeChunk(ch); this.chunks.delete(id); }
     const order = [...want.entries()].sort((p, q) => p[1] - q[1]);
-    let budget = 6; const t0 = performance.now();
+    let budget = 6; const t0 = performance.now(); let pend = 0;
     for (const [id, d] of order) {
-      if (performance.now() - t0 > 12 && budget < 6) break;
       let ch = this.chunks.get(id); if (!ch) { ch = { id, tStep: 0, blds: [], bDetail: -1 }; this.chunks.set(id, ch); }
-      const step = d < 1800 ? 1 : d < 4000 ? 2 : 4;
+      // V10: LOD застройки/дорог считаем от КАМЕРЫ (3D), а не от точки прицела — иначе с высоты пригороды оставались в detail 1
+      const cp = this.cam.position; const dc = Math.hypot((id % w.chunksN + 0.5) * cs - cp.x, cp.y, (Math.floor(id / w.chunksN) + 0.5) * cs - cp.z);
+      const rs = dc < 1700 ? 1 : 2; const step = dc < 1500 ? 1 : dc < 3500 ? 2 : 4; // V11: шаг рельефа тоже от камеры
+      const det = d > this.q.bldDist ? -1 : dc < 1100 ? 2 : dc < 1900 ? 1 : 0;
+      if (performance.now() - t0 > 12 && budget < 6) { if (ch.tStep !== step || ch.rStep !== rs || ch.bDetail !== det || !ch.roads) pend++; continue; }
       if ((ch.tStep !== step || w.dirtyTerrain.has(id)) && budget > 0) { this.buildTerrain(ch, step); w.dirtyTerrain.delete(id); budget--; }
-      if ((!ch.roads || w.dirtyRoads.has(id)) && budget > 0) { this.buildRoads(ch); w.dirtyRoads.delete(id); budget--; }
-      const det = d > this.q.bldDist ? -1 : d < 1000 ? 2 : d < this.q.bldDist * 0.6 ? 1 : 0;
+      if ((!ch.roads || w.dirtyRoads.has(id) || ch.rStep !== rs) && budget > 0) { ch.rStep = rs; this.buildRoads(ch); w.dirtyRoads.delete(id); budget--; }
+      if ((ch.bDetail !== det || w.dirtyBld.has(id) || ch.tStep !== step || ch.rStep !== rs) && budget <= 0) pend++;
       if ((ch.bDetail !== det || w.dirtyBld.has(id)) && budget > 0) { if (det < 0) { for (const o of ch.blds) { this.scene.remove(o); (o as any).dispose?.(); } ch.blds = []; ch.bDetail = -1; } else this.buildBuildings(ch, det); w.dirtyBld.delete(id); budget--; }
     }
+    (window as any).chunkPending = pend;
   }
   // ---------- lighting ----------
   setTimeOfDay(hours: number) {
-    const a = (hours - 6) / 12 * Math.PI; const sy = Math.sin(a); const day = smooth(-0.15, 0.25, sy);
+    const a = (hours - 6) / 12 * Math.PI; const sy = Math.sin(a);
+    this.rig.setTime(hours); // P2: цвета неба/тумана/света, экспозиция, лавандовая тень — из scene-preset
     this.night.value = 1 - smooth(-0.1, 0.15, sy); styleUniforms.uNight.value = this.night.value * 0.85; // доля горящих окон ночью (lit моделей задаёт порог)
     const tx = this.ctl.tx, tz = this.ctl.tz; const R = 3000;
     this.sun.position.set(tx + Math.cos(a) * R, Math.max(200, sy * R), tz + R * 0.35);
     this.sun.target.position.set(tx, 0, tz);
-    this.sun.intensity = 2.4 * day; this.hemi.intensity = 0.35 + 1.1 * day;
-    const sky = new THREE.Color(0x0b1430).lerp(new THREE.Color(0x9fd0f0), day); const dusk = Math.max(0, 1 - Math.abs(sy) * 4) * 0.5; sky.lerp(new THREE.Color(0xf09a5a), dusk);
-    this.sun.color.setHex(0xfff2dd).lerp(new THREE.Color(0xff9a50), dusk * 1.5);
-    (this.scene.background as THREE.Color).copy(sky); (this.scene.fog as THREE.Fog).color.copy(sky);
+    this.rig.sky.position.copy(this.cam.position); ((this.rig.sky.material as THREE.ShaderMaterial).uniforms.uSunDir.value as THREE.Vector3).set(Math.cos(a), Math.max(0.05, sy), 0.35).normalize();
     const sc = Math.min(1200, Math.max(150, this.ctl.dist * 0.8)); this.renderer.shadowMap.enabled = this.q.shadows && this.ctl.dist < 2200; /* тени только вблизи */ const cam = this.sun.shadow.camera;
     cam.left = -sc; cam.right = sc; cam.top = sc; cam.bottom = -sc; cam.near = 10; cam.far = R * 2.5; cam.updateProjectionMatrix();
     (this.scene.fog as THREE.Fog).near = Math.max(900, this.ctl.dist * 1.2); groundUniforms.uTime.value = performance.now() / 1000; groundUniforms.uFogCol.value.copy((this.scene.fog as THREE.Fog).color); (this.scene.fog as THREE.Fog).far = Math.max(this.q.viewDist * 1.6, this.ctl.dist * 4);
   }
-  render() { this.renderer.render(this.scene, this.cam); this.stats.tris = this.renderer.info.render.triangles; this.stats.calls = this.renderer.info.render.calls; }
+  render() { this.rail?.frame(1 / 60); const cn = Math.min(40, Math.max(1, this.ctl.dist * 0.01)); if (Math.abs(this.cam.near - cn) > 0.2 * cn) { this.cam.near = cn; this.cam.far = Math.max(this.world.M * 3, this.q.viewDist * 2); this.cam.updateProjectionMatrix(); } /* этап A: ближняя плоскость от дистанции — точность глубины, нет мигания (z-fighting) на краю карты */ const lo = this.ctl.dist < 1800; this.vehMeshes[0].visible = this.vehMeshes[1].visible = lo; /* V11: легковые/грузовики с высоты — субпиксельные, не рисуем */ this.renderer.render(this.scene, this.cam); this.stats.tris = this.renderer.info.render.triangles; this.stats.calls = this.renderer.info.render.calls; }
 }
