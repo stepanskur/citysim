@@ -166,9 +166,9 @@ export class Economy {
       if (c.occ < 0.62 && this.rnd() < B.growth.decayDailyMax * 250 * dtD * 24) this.decay(c);
       // trips (commute + freight)
       const trips = c.employed * 2 * this.todFactor(hour) / 24 / 1.25 * dtH; c.tripsDay = c.employed * 2; totalTrips += trips;
-      const carT = trips * c.carShare / this.traffic.scale; let n = Math.floor(carT) + (this.rnd() < carT % 1 ? 1 : 0); n = Math.min(n, 60);
+      const CG = B.congestion; const supF = clamp(1 - CG.tripSuppress * Math.max(0, c.congIdx - CG.tripSuppressFrom), CG.tripSuppressMin, 1) * clamp(1 - CG.occSuppress * Math.max(0, this.traffic.active / this.traffic.cap - CG.occFrom), CG.tripSuppressMin, 1); /* + по заполнению сети агентами (опережающий сигнал);  Степан: баланс спроса — при заторах часть поездок переносится/отменяется */ const carT = Math.min(60, trips * c.carShare / this.traffic.scale) * supF; let n = Math.floor(carT) + (this.rnd() < carT % 1 ? 1 : 0); /* подавление после потолка 60 — иначе при потолке не действует */
       for (let i = 0; i < n; i++) { const a = this.pickTile(c, Z.R), b = this.pickTile(c, this.rnd() < c.comL / (c.comL + c.indL + 1) ? Z.C : Z.I); if (a >= 0 && b >= 0) this.spawnQueue.push([a, b, 0, c.id]); }
-      const fr = (c.salesDay / 400 + c.indL * 0.4) * this.todFactor(hour) / 24 * dtH / this.traffic.scale / 4; let nf = Math.min(15, Math.floor(fr) + (this.rnd() < fr % 1 ? 1 : 0));
+      const fr = (c.salesDay / 400 + c.indL * 0.4) * this.todFactor(hour) / 24 * dtH / this.traffic.scale / 4; const frS = (globalThis as any).__noFrSup ? Math.min(15, Math.floor(fr) + (this.rnd() < fr % 1 ? 1 : 0)) : Math.min(15, fr) * supF; let nf = Math.floor(frS) + (this.rnd() < frS % 1 ? 1 : 0); /* баланс спроса и для грузовиков */
       for (let i = 0; i < nf; i++) { const a = this.pickTile(c, Z.I), b = this.pickTile(c, Z.C); if (a >= 0 && b >= 0) this.spawnQueue.push([a, b, 1, c.id]); }
       // notifications
       if (c.pop > 500) {
@@ -180,7 +180,7 @@ export class Economy {
       }
     }
     // agent scale: keep active agents near cap
-    const desired = totalTrips / dtH * 0.35; this.traffic.scale = clamp(this.traffic.scale * 0.8 + 0.2 * Math.max(1, desired / (this.traffic.cap * BALANCE.congestion.agentFill)), 1, 1e5);
+    const desired = totalTrips / dtH * 0.35; this.traffic.scale = clamp(this.traffic.scale * 0.8 + 0.2 * Math.max(1, desired / (this.traffic.cap * BALANCE.congestion.agentFill)), 1, BALANCE.congestion.scaleMax); /* Степан: агент ≈ 1 машина — иначе один агент весом 6 даёт «пробку» на пустой улице; лишний спрос гасится балансом (tripSuppress/occSuppress) */
     this.trade(dtD);
     // budget
     L.roads += this.roadUpkeep() * dtD; for (const ln of this.loans) L.interest += ln.amount * ln.rate / 365 * dtD;

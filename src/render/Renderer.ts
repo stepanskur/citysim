@@ -643,7 +643,10 @@ export class Renderer {
     for (const [id, ch] of this.chunks) if (!want.has(id)) { this.disposeChunk(ch); this.chunks.delete(id); }
     if (w.dirtyRoads.size && w.net.edges.length !== this.farEdges) { this.farEdges = w.net.edges.length; this.buildFarRoads(); }
     const order = [...want.entries()].sort((p, q) => p[1] - q[1]);
-    let budget = BALANCE.render.chunkOpsPerFrame; const t0 = performance.now(); let pend = 0; // QA2 п.2: бюджет кадра — не больше N операций и T мс; остальное в следующих кадрах (даль закрывает подложка)
+    let budget = BALANCE.render.chunkOpsPerFrame; const t0 = performance.now(); let pend = 0;
+    { /* QA4 п.1: после прыжка камеры ближние чанки сначала получают полотно дорог (раньше бюджет кадра съедали рельеф/дома — минуты «машины по траве» и диски узлов без дорог) */
+      let rb = BALANCE.render.roadFirstOps; for (const [id, d] of order) { if (d > BALANCE.render.roadFirstM || rb <= 0) break; let ch = this.chunks.get(id); if (!ch) { ch = { id, tStep: 0, blds: [], bDetail: -1 }; this.chunks.set(id, ch); }
+        if (!ch.roads || w.dirtyRoads.has(id)) { if (!ch.tStep) { this.buildTerrain(ch, 1); w.dirtyTerrain.delete(id); } ch.rStep = 1; this.buildRoads(ch); w.dirtyRoads.delete(id); rb--; } } } // QA2 п.2: бюджет кадра — не больше N операций и T мс; остальное в следующих кадрах (даль закрывает подложка)
     for (const [id, d] of order) {
       let ch = this.chunks.get(id); if (!ch) { ch = { id, tStep: 0, blds: [], bDetail: -1 }; this.chunks.set(id, ch); }
       // V10: LOD застройки/дорог считаем от КАМЕРЫ (3D), а не от точки прицела — иначе с высоты пригороды оставались в detail 1

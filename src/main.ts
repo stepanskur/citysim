@@ -7,6 +7,9 @@ import { SIZES } from './world/consts';
 import { ARCH_OPTIONS } from './render/Themes';
 import GenWorker from './gen/gen.worker.ts?worker';
 const params = new URLSearchParams(location.search);
+import { BALANCE } from './sim/balance';
+if (params.get('sig')) { BALANCE.trafficControl.adaptive.on = params.get('sig') === 'adaptive'; BALANCE.trafficControl.equalAlt = params.get('sig') === 'adaptive'; }
+if (params.get('bal') === '0') { const C: any = BALANCE.congestion; C.tripSuppress = 0; C.occSuppress = 0; C.scaleMax = 1e5; BALANCE.trafficControl.equalAlt = false; BALANCE.trafficControl.adaptive.on = false; } // «до» для сравнения // замер до/после (qa/jam.mjs)
 const ui = document.getElementById('ui')!;
 function start(seed: number, size: number, snap?: any, neighbors = +(params.get('nb') ?? 2), arch = snap?.arch ?? params.get('arch') ?? 'lateSng') {
   ui.innerHTML = `<div id="loading"><div style="font:800 32px var(--font)">City<span style="color:var(--accent)">Sim</span></div><div>Генерация мира…</div><div class="bar"><div id="lb" style="width:0"></div></div><div id="lt" class="hint"></div></div>`;

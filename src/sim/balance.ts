@@ -22,6 +22,7 @@ export interface RoadSystemConsts {
 }
 
 export interface CongestionConsts {
+  /** Степан: баланс спроса — доля поездок на авто снижается при заторах: k = clamp(1 − tripSuppress·max(0, congIdx − tripSuppressFrom), tripSuppressMin, 1) */ tripSuppress: number; tripSuppressFrom: number; tripSuppressMin: number; /** то же по заполнению сети агентами active/cap выше occFrom */ occSuppress: number; occFrom: number; /** макс. машин на агента */ scaleMax: number; /** грузовик в легковых (загрузка/«Пробки») */ truckPCU: number;
   /** QA2 п.3: замедление движения от физической плотности агентов на полосе: v = vmax·max(moveMinFrac, 1 − moveLoadK·плотн²) */ /** QA3: у каждого ряда своя голова у стоп-линии */ multiHead: boolean; moveLoadK: number; moveMinFrac: number; /** IDM: ускорение м/с², интервал с, мин. зазор м, 2√(ab) */ /** QA2 п.3: голова очереди, ждущая въезда дольше squeezeSec, протискивается в занятую полосу (разрыв клинча перекрёстка) */ squeezeSec: number; /** доля лимита агентов, на которую считается scale */ agentFill: number; idm: { a: number; T: number; s0: number; ab: number };
   /** пороги уровней V/C: dense, jam, gridlock */ levelVC: { dense: number; jam: number; gridlock: number };
   /** цвета оверлея по уровням (hex) */ levelColors: { free: string; dense: string; jam: string; gridlock: string };
@@ -84,7 +85,7 @@ export interface ZoningBalance {
   /** вероятность наследования темы кварталом */ themeKeepProb: number;
 }
 export interface TrafficControlBalance {
-  /** свои: цикл в симуляции, с; угол Y-развилки, °; зазор приоритета, м */ simCycle: number; adaptive: { on: boolean; minG: number; maxG: number; ratio: number; allRed: number; senseM: number }; yForkDeg: [number, number]; priorityGapM: number; /** QA2 п.3: светофор по вызову — радиус обнаружения на поперечном подходе, м */ actuatedM: number; /** QA2 п.3: через сколько с ожидания второстепенную пропускают, с */ courtesySec: number;
+  /** свои: цикл в симуляции, с; угол Y-развилки, °; зазор приоритета, м */ simCycle: number; /** Степан: приоритетный узел с очередью ≥ autoSigQ (стоящих машин у стоп-линий) переходит в поочерёдный адаптивный проезд */ equalAlt: boolean; autoSigQ: number; /** QA4 п.2: доля радиуса города, внутри которой 4-сторонний перекрёсток улиц — светофор */ signalCoreK: number; adaptive: { on: boolean; minG: number; maxG: number; ratio: number; allRed: number; senseM: number; mainW: number; vehM: number; waveM: number; waveMin: number }; yForkDeg: [number, number]; priorityGapM: number; /** QA2 п.3: светофор по вызову — радиус обнаружения на поперечном подходе, м */ actuatedM: number; /** QA2 п.3: через сколько с ожидания второстепенную пропускают, с */ courtesySec: number;
   /** ёмкость подхода на полосу, авт/ч: uncontrolled, allWayStop */ uncontrolledCap: number; allWayStopCap: number;
   /** зазоры для второстепенного подхода (HCM), с */ criticalGap: number; followUpTime: number;
   /** насыщение светофора, авт/ч зелёного; цикл мин/по умолч./макс, с; мин. зелёный с; потерянное время на фазу с */ saturationFlow: number; cycleMin: number; cycleDefault: number; cycleMax: number; minGreen: number; lostTimePerPhase: number;
@@ -314,7 +315,7 @@ export interface BalanceConstants {
   lines: TransitLinesConsts;
   /** этап H (THEMES_SPEC §5): размер квартала темы, м; режим «Смешанный»: радиус исторического центра, м, и его эпоха (лет игры); годы кольца новостроек; после какого года — base; доля вкраплений; шаг квантования этажей */
   themes: { quarterSize: number; coreRadius: number; coreEpoch: number; ringEpoch: [number, number]; lateEpoch: number; mixShare: number; floorStep: number };
-  /** QA2 п.2: подгрузка чанков по бюджету кадра */ render: { /** автобусная остановка: масштаб модели, высота столба, размер таблички, м */ busStopScale: number; signalScale: number; signalLampK: number; lampDotNear: number; grassNightDim: number; farRoadDark: number; terrainBlurFar: number; terrainFarFlatten: number; nightRoadEmissive: number; busStopPoleH: number; busStopSign: number; chunkOpsPerFrame: number; chunkMsPerFrame: number; farLots: boolean; /** E2: дальность LOD 2/1 от камеры, м; гистерезис, м */ lodNear: number; lodMid: number; lodHyst: number };
+  /** QA2 п.2: подгрузка чанков по бюджету кадра */ render: { /** автобусная остановка: масштаб модели, высота столба, размер таблички, м */ busStopScale: number; signalScale: number; signalLampK: number; lampDotNear: number; grassNightDim: number; farRoadDark: number; terrainBlurFar: number; terrainFarFlatten: number; nightRoadEmissive: number; busStopPoleH: number; busStopSign: number; chunkOpsPerFrame: number; chunkMsPerFrame: number; /** QA4 п.1: ближние чанки — дороги вне очереди: радиус, м; чанков за кадр */ roadFirstM: number; roadFirstOps: number; farLots: boolean; /** E2: дальность LOD 2/1 от камеры, м; гистерезис, м */ lodNear: number; lodMid: number; lodHyst: number };
   zoning: ZoningBalance;
   trafficControl: TrafficControlBalance;
   construction: ConstructionBalance;
@@ -595,7 +596,7 @@ export const BALANCE: BalanceConstants = {
   },
   congestion: {
     levelVC: { dense: 0.6, jam: 0.9, gridlock: 1.2 },
-    multiHead: true, moveLoadK: 0, moveMinFrac: 0.35, squeezeSec: 6, agentFill: 0.75, idm: { a: 2.5, T: 0.9, s0: 1.5, ab: 3.5 }, // QA2 п.3: было a 1.6, T 1.3, s0 2
+    tripSuppress: 2, tripSuppressFrom: 0.15, tripSuppressMin: 0.1, occSuppress: 2.5, occFrom: 0.25, scaleMax: 1.5, truckPCU: 1.5, multiHead: true, moveLoadK: 0, moveMinFrac: 0.35, squeezeSec: 6, agentFill: 0.75, idm: { a: 2.5, T: 0.9, s0: 1.5, ab: 3.5 }, // QA2 п.3: было a 1.6, T 1.3, s0 2
     levelColors: { free: '#3cb043', dense: '#f2c230', jam: '#e04848', gridlock: '#7a1020' },
     gapCriticalSec: 6.5,
     gapFollowSec: 3.5,
@@ -727,7 +728,7 @@ export const BALANCE: BalanceConstants = {
     oldVehicleBreakdownDaily: 0.01,
   },
   themes: { quarterSize: 120, coreRadius: 1200, coreEpoch: 15, ringEpoch: [10, 40], lateEpoch: 40, mixShare: 0.2, floorStep: 1 },
-  render: { busStopScale: 3, signalScale: 2.2, signalLampK: 2.2, lampDotNear: 0.9, grassNightDim: 0.85, farRoadDark: 0.3, terrainBlurFar: 3, terrainFarFlatten: 0.55, nightRoadEmissive: 0x39424f /* QA3 №11: светофоры заметнее */, busStopPoleH: 13, busStopSign: 6, chunkOpsPerFrame: 2, chunkMsPerFrame: 4, farLots: true, lodNear: 1300, lodMid: 2400, lodHyst: 150 },
+  render: { busStopScale: 3, signalScale: 2.2, signalLampK: 2.2, lampDotNear: 0.9, grassNightDim: 0.85, farRoadDark: 0.3, terrainBlurFar: 3, terrainFarFlatten: 0.55, nightRoadEmissive: 0x39424f /* QA3 №11: светофоры заметнее */, busStopPoleH: 13, busStopSign: 6, roadFirstM: 700, roadFirstOps: 3, chunkOpsPerFrame: 2, chunkMsPerFrame: 4, farLots: true, lodNear: 1300, lodMid: 2400, lodHyst: 150 },
   lines: {
     stopSpacingMin: [250, 250, 600, 1500],
     stopSpacingMax: [800, 800, 2000, 15000],
@@ -785,7 +786,7 @@ export const BALANCE: BalanceConstants = {
     roundabout1: [1200, 0.6],
     roundabout2: [2000, 0.8],
     cost: { priority: 2000, stop: 1000, signal: 25000, roundabout1: 40000, roundabout2: 90000 },
-    simCycle: 30, adaptive: { on: false, minG: 7, maxG: 35, ratio: 1.5, allRed: 1.5, senseM: 70 }, // цикл светофора в симуляции, с (ускоренное игровое время)
+    simCycle: 30, equalAlt: true, autoSigQ: 6, signalCoreK: 0.35, adaptive: { on: false, minG: 7, maxG: 35, ratio: 1.5, allRed: 1.5, senseM: 70, mainW: 0.5, vehM: 7, waveM: 220, waveMin: 2 }, // цикл светофора в симуляции, с (ускоренное игровое время)
     yForkDeg: [30, 60],
     priorityGapM: 20, actuatedM: 40, courtesySec: 10, // второстепенная ждёт, если машина главной ближе, м (QA2 п.3: было 30)
     upkeep: { priority: 20, stop: 10, signal: 300, roundabout1: 150, roundabout2: 300 },

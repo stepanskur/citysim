@@ -48,12 +48,14 @@ export class Traffic {
     if (this.g.length < nN) { const L = nN * 2; this.g = new Float64Array(L); this.from = new Int32Array(L); this.stamp = new Int32Array(L); this.closed = new Int32Array(L); }
     if (this.cacheVer !== net.version) { this.cache.clear(); this.cacheVer = net.version; }
   }
-  laneLoad(l: number) { const E = this.world.net.edges[l >> 1]; return this.laneW[l] * 7.5 / (E.len * ROAD_TYPES[E.type].lanes); }
+  /** Степан: загрузка по физическим машинам (легковой 1, грузовик truckPCU), а не по весу агента — иначе один агент «за 6 машин» красит пустую улицу пробкой */
+  laneLoad(l: number) { const E = this.world.net.edges[l >> 1]; const arr = this.lanes[l]; if (!arr || !arr.length) return 0; let p = 0; const tp = BALANCE.congestion.truckPCU; for (let i = 0; i < arr.length; i++) p += this.vehs[arr[i]].type ? tp : 1; return p * 7.5 / (E.len * ROAD_TYPES[E.type].lanes); }
+  laneDemand(l: number) { const E = this.world.net.edges[l >> 1]; return this.laneW[l] * 7.5 / (E.len * ROAD_TYPES[E.type].lanes); }
   edgeLoad(e: number) { return Math.max(this.laneLoad(e * 2), this.laneLoad(e * 2 + 1)); }
   /** QA2 п.3: скорость движения агентов. laneSpeed считает нагрузку по весу агентов (w = scale реальных машин) — это спрос для слоя «Пробки» и стоимости
    *  маршрутов; двигать по ней же — двойной счёт (очередь агентов уже тормозит IDM). Здесь — физическая плотность самих агентов, мягче (balance.congestion.moveLoadK). */
   moveSpeed(l: number, n: number) { const E = this.world.net.edges[l >> 1]; const T = BALANCE.congestion; const ld = n * 7.5 / (E.len * ROAD_TYPES[E.type].lanes); return ROAD_TYPES[E.type].speed * Math.max(T.moveMinFrac, 1 - T.moveLoadK * Math.min(1, ld * ld)); }
-  laneSpeed(l: number) { const E = this.world.net.edges[l >> 1]; const ld = this.laneLoad(l); return ROAD_TYPES[E.type].speed * Math.max(0.12, 1 - 0.85 * Math.min(1, ld * ld)); }
+  laneSpeed(l: number) { const E = this.world.net.edges[l >> 1]; const ld = this.laneDemand(l); return ROAD_TYPES[E.type].speed * Math.max(0.12, 1 - 0.85 * Math.min(1, ld * ld)); }
   // A* over directed lanes. typeMask: bitmask of allowed edge types
   astar(src: number, dst: number, typeMask = 15, maxExp = 80000): Int32Array | null {
     if (src === dst) return null;
@@ -129,11 +131,18 @@ export class Traffic {
       if (arms.length >= 3 && !arms.some(a => a.t === 2)) {
         const av = arms.filter(a => a.t === 1).length; const TC = BALANCE.trafficControl;
         let yfork = false; if (av >= 2 && arms.length === 3) for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) { let d = Math.abs(arms[i].a - arms[j].a) * 180 / Math.PI; if (d > 180) d = 360 - d; if (d >= TC.yForkDeg[0] && d <= TC.yForkDeg[1]) yfork = true; }
-        m = av >= 2 || yfork ? 1 : arms.some(a => a.t <= 1) ? 2 : 3;
+        const big = arms.length >= 4 && (av >= 1 || (TC.signalCoreK > 0 && arms.every(a => a.t <= 1) && (this.world.cities || []).some((c: any) => Math.hypot(c.x - N0.x, c.z - N0.z) < c.r * TC.signalCoreK))); // QA4 п.2: базовые светофоры на крупных перекрёстках (4+ ветки с проспектом; улица×улица в ядре города)
+        m = av >= 2 || yfork || big ? 1 : arms.some(a => a.t <= 1) ? 2 : 3;
       }
     }
     this.modeCache[node] = m; return m;
   }
+  /** Степан: «светофор по потоку» — приоритетный узел с очередью ≥ autoSigQ на подходах ведёт себя как адаптивный светофор (с гистерезисом) */
+  busyNode(node: number): boolean { const net = this.world.net; const N0 = net.nodes[node]; const TC = BALANCE.trafficControl; let S = this.busy.get(node);
+    if (!S || this.time - S.t >= 5) { let q = 0; for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive) continue; const arr = this.lanes[e * 2 + (X.b === node ? 0 : 1)]; if (arr) for (const id of arr) { const v = this.vehs[id]; if (X.len - v.s < TC.adaptive.senseM && v.v < 1) q++; } }
+      const on = S ? (S.on ? q >= TC.autoSigQ / 2 : q >= TC.autoSigQ) : q >= TC.autoSigQ; S = { t: this.time, on }; this.busy.set(node, S); }
+    return S.on; }
+  busy = new Map<number, { t: number; on: boolean }>();
   rank(t: number) { return [1, 2, 3, 0][t]; }
   green(node: number, edge: number, wait = 0): boolean {
     const net = this.world.net; const N0 = net.nodes[node]; if (N0.edges.length < 3) return true;
@@ -141,24 +150,17 @@ export class Traffic {
     const E = net.edges[edge];
     if (mode === 2) { // приоритет: главная (старший класс) едет, второстепенная ждёт разрыва в потоке главной
       let top = 0; for (const e of N0.edges) { const X = net.edges[e]; if (X.alive) top = Math.max(top, this.rank(X.type)); }
+      if (BALANCE.trafficControl.equalAlt && this.busyNode(node)) return this.adaptiveGreen(node, edge); // равнозначный 4-сторонний: поочерёдно по очередям (иначе «все едут» → взаимная блокировка кварталом)
       if (this.rank(E.type) >= top || wait > BALANCE.trafficControl.courtesySec) return true; // QA2 п.3: долго ждущего со второстепенной пропускают (иначе очередь растёт без конца)
       const gap = BALANCE.trafficControl.priorityGapM;
       for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive || e === edge || this.rank(X.type) < top) continue; const l = e * 2 + (X.b === node ? 0 : 1); const arr = this.lanes[l]; if (arr && arr.length) { const v = this.vehs[arr[0]]; if (X.len - v.s < gap && v.v > 1) return false; } }
       return true;
     }
+    if (BALANCE.trafficControl.adaptive.on) return this.adaptiveGreen(node, edge);
     const o = net.nodes[E.a === node ? E.b : E.a];
     const e0 = net.edges[N0.edges[0]]; const o0 = net.nodes[e0.a === node ? e0.b : e0.a];
     const base = Math.atan2(o0.z - N0.z, o0.x - N0.x); const ang = Math.atan2(o.z - N0.z, o.x - N0.x);
     let rel = ((ang - base) % Math.PI + Math.PI * 2) % Math.PI; const grp = rel < Math.PI / 4 || rel > Math.PI * 3 / 4 ? 0 : 1;
-    const AD = BALANCE.trafficControl.adaptive;
-    if (AD.on) { // Степан: адаптивный светофор — фаза по очередям (minG..maxG), смена при перевесе очереди поперёк, межфазный «все красные»
-      let S = this.sig.get(node); if (!S) { S = { g: (node & 1) as number, t: this.time - AD.minG, u: -1 }; this.sig.set(node, S); }
-      if (S.u !== this.time) { S.u = this.time; const q = [0, 0];
-        for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive) continue; const ox = net.nodes[X.a === node ? X.b : X.a]; let r2 = ((Math.atan2(ox.z - N0.z, ox.x - N0.x) - base) % Math.PI + Math.PI * 2) % Math.PI; const g2 = r2 < Math.PI / 4 || r2 > Math.PI * 3 / 4 ? 0 : 1;
-          const arr = this.lanes[e * 2 + (X.b === node ? 0 : 1)]; if (arr) for (let i = 0; i < arr.length; i++) if (X.len - this.vehs[arr[i]].s < AD.senseM) q[g2]++; }
-        const el = this.time - S.t, own = q[S.g], oth = q[1 - S.g];
-        if (oth > 0 && el >= AD.minG && (own === 0 || el >= AD.maxG || oth > own * AD.ratio + 1)) { S.g = 1 - S.g; S.t = this.time; } }
-      if (this.time - S.t < AD.allRed) return false; return S.g === grp; }
     const cyc = BALANCE.trafficControl.simCycle; const ph = Math.floor((this.time + (node * 7.31) % cyc) / (cyc / 2)) % 2;
     if (ph === grp) return true;
     // QA2 п.3: светофор по вызову — если на поперечном направлении никто не подъезжает (ближе actuatedM), наше направление получает зелёный
@@ -166,6 +168,29 @@ export class Traffic {
       let r2 = ((Math.atan2(ox.z - N0.z, ox.x - N0.x) - base) % Math.PI + Math.PI * 2) % Math.PI; const g2 = r2 < Math.PI / 4 || r2 > Math.PI * 3 / 4 ? 0 : 1; if (g2 === grp) continue;
       const arr = this.lanes[e * 2 + (X.b === node ? 0 : 1)]; if (arr && arr.length && X.len - this.vehs[arr[0]].s < R) return false; }
     return true;
+  }
+  /** Степан: адаптивная фаза узла (очереди, spillback, зелёная волна, баланс по классам) */
+  adaptiveGreen(node: number, edge: number): boolean {
+    const net = this.world.net; const N0 = net.nodes[node]; const E = net.edges[edge];
+    const o = net.nodes[E.a === node ? E.b : E.a];
+    const e0 = net.edges[N0.edges[0]]; const o0 = net.nodes[e0.a === node ? e0.b : e0.a];
+    const base = Math.atan2(o0.z - N0.z, o0.x - N0.x); const ang = Math.atan2(o.z - N0.z, o.x - N0.x);
+    let rel = ((ang - base) % Math.PI + Math.PI * 2) % Math.PI; const grp = rel < Math.PI / 4 || rel > Math.PI * 3 / 4 ? 0 : 1;
+    const AD = BALANCE.trafficControl.adaptive;
+    { // Степан: адаптивный светофор — фаза по очередям (minG..maxG), смена при перевесе очереди поперёк, межфазный «все красные»
+      let S = this.sig.get(node); if (!S) { S = { g: (node & 1) as number, t: this.time - AD.minG, u: -1 }; this.sig.set(node, S); }
+      if (S.u !== this.time) { S.u = this.time; const q = [0, 0], sb = [0, 0], pl = [0, 0];
+        for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive) continue; const ox = net.nodes[X.a === node ? X.b : X.a]; let r2 = ((Math.atan2(ox.z - N0.z, ox.x - N0.x) - base) % Math.PI + Math.PI * 2) % Math.PI; const g2 = r2 < Math.PI / 4 || r2 > Math.PI * 3 / 4 ? 0 : 1;
+          const arr = this.lanes[e * 2 + (X.b === node ? 0 : 1)]; if (!arr) continue; const wk = 1 + AD.mainW * (X.type === 1 || X.type === 2 ? 1 : 0); // баланс спроса: магистраль весомее
+          for (let i = 0; i < arr.length; i++) { const v = this.vehs[arr[i]]; const d = X.len - v.s;
+            if (d < AD.senseM) { // spillback: машина, которой некуда выезжать (выход забит), спрос не создаёт
+              const nx = v.path[v.pi + 1]; if (nx !== undefined && nx >= 0) { const nE = net.edges[nx >> 1]; const tl = this.lanes[nx]; if (nE && tl && tl.length * AD.vehM >= nE.len * ROAD_TYPES[nE.type].lanes) { sb[g2]++; continue; } }
+              q[g2] += wk; }
+            else if ((X.type === 1 || X.type === 2) && d < AD.waveM && v.v > 3) pl[g2]++; } } // зелёная волна: пачка, подходящая по магистрали
+        const el = this.time - S.t, own = q[S.g], oth = q[1 - S.g]; const blocked = own === 0 && sb[S.g] > 0;
+        const hold = pl[S.g] >= AD.waveMin && el < AD.maxG && oth < AD.waveMin * 2; // продлить зелёный под подходящую пачку
+        if (oth > 0 && el >= AD.minG && !hold && (own === 0 || blocked || el >= AD.maxG || oth > own * AD.ratio + 1)) { S.g = 1 - S.g; S.t = this.time; } }
+      if (this.time - S.t < AD.allRed) return false; return S.g === grp; }
   }
   step(dt: number) {
     this.time += dt; this.ensure();
