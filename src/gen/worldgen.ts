@@ -274,7 +274,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     for (let i = 1; i < P.length - 1; i++) { const d = Math.abs((b[0] - a[0]) * (a[1] - P[i][1]) - (a[0] - P[i][0]) * (b[1] - a[1])) / L; if (d > md) { md = d; mi = i; } }
     if (md <= tol) return [a, b]; const l = dp(P.slice(0, mi + 1), tol), r = dp(P.slice(mi), tol); return [...l.slice(0, -1), ...r]; };
   const segX = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number) => { const den = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx); if (Math.abs(den) < 1e-9) return -1; const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / den, u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / den; return t >= 0 && t <= 1 && u > 0 && u < 1 ? t : -1; };
-  const hwLog = { atGrade: 0, elevated: 0, cut: 0, hwMeet: 0 };
+  const hwLog = { interchange: 0, atGrade: 0, elevated: 0, cut: 0, hwMeet: 0 };
   const addHighway = (pts: [number, number][], startNode: number, endNode: number) => {
     if (pts.length < 2) return;
     const raw = pts.slice(); if (startNode >= 0) raw[0] = [net.nodes[startNode].x, net.nodes[startNode].z]; if (endNode >= 0) raw.push([net.nodes[endNode].x, net.nodes[endNode].z]);
@@ -304,10 +304,14 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
       const t = segX(a.x, a.z, b.x, b.z, A.x, A.z, B.x, B.z); if (t >= 0) { const s = a.s + (b.s - a.s) * t; if (s > 25 && s < Ltot - 25 && !X.some(q => q.e === e && Math.abs(q.s - s) < 1)) X.push({ s, e }); } } }
     X.sort((a, b) => a.s - b.s);
     const cl: { s: number; e: number }[][] = []; for (const x of X) { const c = cl[cl.length - 1]; if (c && x.s - c[c.length - 1].s < 2 * RAMP) c.push(x); else cl.push([x]); }
-    const elev: [number, number][] = []; let lastJ = startNode >= 0 ? 0 : -1e9;
+    const diam: { s: number; e: number; a: number; b: number }[] = []; const elev: [number, number][] = []; let lastJ = startNode >= 0 ? 0 : -1e9;
     for (const c of cl) { const s0 = c[0].s, s1 = c[c.length - 1].s;
-      if (c.length === 1 && net.edges[c[0].e].type === 1 /* A4: в уровне шоссе встречает только проспект */ && s0 - lastJ >= HWC.junctionStep && Ltot - s0 >= HWC.junctionStep * 0.5) { lastJ = s0; hwLog.atGrade++; continue; }
-      if (s0 - RAMP > 0 && s1 + RAMP < Ltot) { elev.push([s0 - RAMP, s1 + RAMP]); hwLog.elevated += c.length; continue; }
+      if (c.length === 1 && net.edges[c[0].e].type === 1 /* A4: в уровне шоссе встречает только проспект */ && s0 - lastJ >= HWC.junctionStep && Ltot - s0 >= HWC.junctionStep * 0.5) { lastJ = s0;
+        if (HWC.diamond && s0 - RAMP > 0 && s0 + RAMP < Ltot) { elev.push([s0 - RAMP, s0 + RAMP]); diam.push({ s: s0, e: c[0].e, a: s0 - RAMP, b: s0 + RAMP }); hwLog.interchange++; continue; } // A11: развязка на крупном узле
+        hwLog.atGrade++; continue; }
+      if (s0 - RAMP > 0 && s1 + RAMP < Ltot) { elev.push([s0 - RAMP, s1 + RAMP]); hwLog.elevated += c.length;
+        const av = c.find(x => net.edges[x.e].type === 1); if (HWC.diamond && av && av.s - lastJ >= HWC.junctionStep && Ltot - av.s >= HWC.junctionStep * 0.5) { lastJ = av.s; diam.push({ s: av.s, e: av.e, a: s0 - RAMP, b: s1 + RAMP }); hwLog.interchange++; } // A11: съезды и с эстакады над пучком улиц, если в нём есть проспект
+        continue; }
       if (c.some(x => net.edges[x.e].type === 2)) { hwLog.hwMeet++; continue; } // у конца трассы (рампа не помещается) шоссе сходятся в общем узле-развязке // A3: шоссе × шоссе — только эстакадой
       for (const x of c) if (net.edges[x.e].alive && net.edges[x.e].type !== 2) { net.removeEdge(x.e); hwLog.cut++; } }
     // слить интервалы и вставить их границы в полилинию
@@ -316,6 +320,13 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     for (const [a, b] of EV) for (const s of [a, b]) { if (P.some(p => Math.abs(p.s - s) < 8)) continue; P.push(at(s)); P.sort((p, q) => p.s - q.s); }
     for (let k = 0; k + 1 < P.length; k++) { const m = (P[k].s + P[k + 1].s) / 2; const lv = EV.some(([a, b]) => m > a && m < b) ? 1 : 0;
       const snap = k === 0 || k + 2 === P.length ? 14 : 2; net.addRoad(P[k].x, P[k].z, P[k + 1].x, P[k + 1].z, 2, snap, -1, lv); }
+    // A11: съезды развязки — от начала/конца эстакады к проспекту по разные стороны шоссе (два двусторонних съезда дают все направления)
+    for (const d of diam) { const E = net.edges[d.e]; if (!E.alive) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const L = Math.hypot(B.x - A.x, B.z - A.z) || 1, ux = (B.x - A.x) / L, uz = (B.z - A.z) / L;
+      if (EV.some(([u, v]) => (d.a > u + 1 && d.a < v - 1) || (d.b > u + 1 && d.b < v - 1))) { hwLog.interchange--; continue; } // граница слилась с соседней эстакадой — съезд пришёлся бы на мост
+      const h0 = at(d.a), h1 = at(d.b), hc = at(d.s); const t = Math.max(0, Math.min(L, (hc.x - A.x) * ux + (hc.z - A.z) * uz)); const X = { x: A.x + ux * t, z: A.z + uz * t }; const o = HWC.diamondOff;
+      const side = (q: { x: number; z: number }) => (h1.x - h0.x) * (q.z - h0.z) - (h1.z - h0.z) * (q.x - h0.x); const pPlus = { x: X.x + ux * o, z: X.z + uz * o }, pMinus = { x: X.x - ux * o, z: X.z - uz * o };
+      const [q0, q1] = side(pPlus) > 0 ? [pPlus, pMinus] : [pMinus, pPlus];
+      net.addRoad(h0.x, h0.z, q0.x, q0.z, 1, 14, -1, 0); net.addRoad(h1.x, h1.z, q1.x, q1.z, 1, 14, -1, 0); } // съезд — класс проспекта: шоссе в уровне встречает только проспект (A4)
     // A3/A5: клетки вдоль готового шоссе дороги — следующее шоссе не идёт рядом и не «косичкой», а пересекает коротко (почти перпендикулярно)
     for (const p of P) { const i0 = Math.floor(p.x / G), j0 = Math.floor(p.z / G); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const i = i0 + a, j = j0 + b; if (i >= 0 && j >= 0 && i < GN && j < GN && !hwMark[j * GN + i]) { hwMark[j * GN + i] = 1; gcost[j * GN + i] += BALANCE.netgen.hwCellPenalty; } } }
   };
@@ -365,7 +376,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
       (a, b) => { const A = net.nodes[a], B = net.nodes[b]; addHighway(gpath(A.x, A.z, B.x, B.z), a, b); });
     // второй проход чистки: починка связности и шоссе-перемычки могли дать новые дубли/тупики
     for (let pass = 0; pass < 2; pass++) { const td = tidyNetwork(net, BALANCE.netgen.specW); genLog.push(`чистка-${pass + 2}: дублей ${td.dup}, тупиков ${td.dead}, сплетений ${td.tangle}`); if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), genLog); }
-    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push('проспектов-тупиков исправлено: ' + fixAvenueDeadEnds(net)); genLog.push('изломов шоссе снято: ' + smoothHighwayKinks(net)); genLog.push(`шоссе: развязок ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}, стыков шоссе ${hwLog.hwMeet}`); (globalThis as any).__netgenLog = genLog; }
+    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push('проспектов-тупиков исправлено: ' + fixAvenueDeadEnds(net)); genLog.push('изломов шоссе снято: ' + smoothHighwayKinks(net)); genLog.push(`развязок на въездах шоссе: ${entryInterchanges(net, RAMP)}`); genLog.push(`шоссе: развязок-ромбов ${hwLog.interchange}, узлов в уровне ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}, стыков шоссе ${hwLog.hwMeet}`); (globalThis as any).__netgenLog = genLog; }
   progress?.('Зонирование...');
   const road = new Uint8Array(N * N);
   for (const e of net.edges) { if (!e.alive) continue; const A = net.nodes[e.a], B = net.nodes[e.b]; markRoadTiles(N, road, A.x, A.z, B.x, B.z, e.type, ROAD_TYPES[e.type].w); }
@@ -439,3 +450,44 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
   return { seed, sizeIdx, N, heights, resource, zone, bld, kind, cityOf, road, style, cities, roads: net.serialize(), outs, nbrs };
 }
 export type WorldData = ReturnType<typeof genWorld>;
+
+/** A11: развязки на въездах шоссе в город. Узел, где шоссе проходит насквозь (2 наземных ребра шоссе), а сбоку примыкает 1–2 проспекта:
+ *  шоссе поднимается эстакадой на RAMP м в обе стороны, проспект проходит под ней (2 проспекта — сквозь, 1 — обрывается у шоссе),
+ *  с концов эстакады — 2 съезда (класс проспекта) на проспект по разные стороны шоссе (полуромб, diamondOff м от оси шоссе).
+ *  Узел пропускается, если в пределах RAMP к шоссе примыкает ещё что-то или не хватает длины проспекта — связность не ломается. */
+export function entryInterchanges(net: RoadNet, RAMP: number): number {
+  const HWC = BALANCE.netgen.highway; if (!HWC.diamond) return 0; const off = HWC.diamondOff; let made = 0;
+  const live = (n: number) => net.nodes[n].edges.filter(e => net.edges[e].alive);
+  const cand: number[] = []; net.nodes.forEach((N0, n) => { if (!N0.alive) return; const L = live(n); if (L.some(e => net.edges[e].lv)) return; const h = L.filter(e => net.edges[e].type === 2), r = L.filter(e => net.edges[e].type !== 2);
+    if (h.length === 2 && r.length >= 1 && r.length <= 2 && r.every(e => net.edges[e].type === 1)) cand.push(n); });
+  for (const n of cand) { const N0 = net.nodes[n]; if (!N0.alive) continue; const L = live(n); const H = L.filter(e => net.edges[e].type === 2), R = L.filter(e => net.edges[e].type !== 2); if (H.length !== 2 || !R.length) continue;
+    { const d = H.map(e => { const E = net.edges[e], o = net.nodes[E.a === n ? E.b : E.a]; return [(o.x - N0.x) / E.len, (o.z - N0.z) / E.len]; }); if (d[0][0] * d[1][0] + d[0][1] * d[1][1] > -Math.cos(12 * Math.PI / 180)) continue; } // шоссе здесь поворачивает (стык двух трасс) — не сквозной проход
+    // проход вдоль шоссе на RAMP м: рёбра цепочки и точка раздела
+    const walk = (e0: number) => { let cur = n, e = e0, run = 0; const chain: number[] = [];
+      for (let g = 0; g < 200; g++) { const E = net.edges[e]; if (!E.alive || E.type !== 2 || E.lv) return null; const nx = E.a === cur ? E.b : E.a;
+        if (run + E.len >= RAMP) { const t = (RAMP - run) / E.len; const A = net.nodes[cur], B = net.nodes[nx]; return { chain, e, from: cur, x: A.x + (B.x - A.x) * t, z: A.z + (B.z - A.z) * t, t }; }
+        chain.push(e); run += E.len; const Ln = live(nx); if (Ln.length !== 2) return null; e = Ln[0] === e ? Ln[1] : Ln[0]; cur = nx; } return null; };
+    const w1 = walk(H[0]), w2 = walk(H[1]); if (!w1 || !w2) continue;
+    // проспекты: дальние концы и направление
+    const arms = R.map(e => { const E = net.edges[e]; const o = E.a === n ? E.b : E.a; const O = net.nodes[o]; return { e, o, len: E.len, ux: (O.x - N0.x) / E.len, uz: (O.z - N0.z) / E.len }; });
+    if (arms.some(a => a.len < 48)) continue; const oa = arms.map(a => Math.min(off, a.len - 8)); // съезд не дальше конца ребра проспекта
+    // поднять шоссе: рёбра цепочек → lv 1, граничное ребро — разделить
+    const lift = (w: NonNullable<ReturnType<typeof walk>>) => { for (const e of w.chain) { const E = net.edges[e]; const { a, b, type, city } = E; const m = E.m || 0; net.removeEdge(e); net.nodes[a].alive = net.nodes[b].alive = true; net.addEdge(a, b, type, city, 1, m); }
+      const E = net.edges[w.e]; const far = E.a === w.from ? E.b : E.a; const { type, city } = E; const m = E.m || 0; let sp: number;
+      if (w.t > 0.97) sp = far; else { net.removeEdge(w.e); net.nodes[w.from].alive = net.nodes[far].alive = true; sp = net.newNode(w.x, w.z, N0.city); net.addEdge(w.from, sp, type, city, 1, m); net.addEdge(sp, far, type, city, 0, m); }
+      return sp; };
+    // нужна точка на шоссе по обе стороны; проспект — отцепить от узла шоссе
+    const s1 = lift(w1), s2 = lift(w2);
+    for (const a of arms) net.removeEdge(a.e);
+    let q: number[];
+    if (arms.length === 2) { // сквозной проспект под эстакадой; точки съездов — на нём по обе стороны
+      const ce = net.addEdge(arms[0].o, arms[1].o, 1, N0.city, 0); if (ce < 0) continue;
+      const qa = net.splitEdge(ce, N0.x + arms[0].ux * oa[0], N0.z + arms[0].uz * oa[0]); const qb = net.splitEdge(net.edgeBetween(qa, arms[1].o), N0.x + arms[1].ux * oa[1], N0.z + arms[1].uz * oa[1]); q = [qa, qb];
+    } else { // проспект с одной стороны: обрывается в off м от шоссе, оба съезда на его конец
+      const a = arms[0]; const qa = net.newNode(N0.x + a.ux * oa[0], N0.z + a.uz * oa[0], N0.city); net.addEdge(qa, a.o, 1, N0.city, 0); q = [qa, qa]; }
+    // съезд с каждой стороны шоссе — к точке проспекта по ту же сторону от шоссе (для одностороннего — обе к одной)
+    const S1 = net.nodes[s1], S2 = net.nodes[s2]; const side = (k: number) => { const Q = net.nodes[k]; return (S2.x - S1.x) * (Q.z - S1.z) - (S2.z - S1.z) * (Q.x - S1.x); };
+    const [qa, qb] = side(q[0]) > 0 ? q : [q[1], q[0]];
+    net.addEdge(s1, qa, 1, N0.city, 0); net.addEdge(s2, qb, 1, N0.city, 0); made++; ((globalThis as any).__entryIC ??= []).push([N0.x, N0.z]); }
+  return made;
+}

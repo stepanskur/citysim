@@ -132,3 +132,4 @@ html.noblur .cs-glass,html.noblur .note,html.noblur #ui #eng-goal{background:rgb
 /* этап C: строка уровня/модулей в подменю дорог */
 .cs-subrow{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
 .cs-sublbl{font-size:12px;color:var(--text-dim,#9aa);display:inline-flex;gap:4px;align-items:center}
+.cs-toast{pointer-events:none} /* QA2 п.7: всплывашка не перехватывает клики по карте (второй клик пути/остановки терялся под ней) */

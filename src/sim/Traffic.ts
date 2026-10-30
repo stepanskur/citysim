@@ -38,7 +38,7 @@ export class Traffic {
         const np = this.astar(endNode, v.dest, 15, C.agentRerouteMaxExp); this.costT[nl] = saved; if (!np || !np.length) continue;
         let nw = 0; for (let i = 0; i < np.length; i++) nw += this.laneCost(np[i]); const oldEff = old + v.wait * 2;
         if (np[0] === nl || oldEff - nw < C.agentRerouteMinGainSec || (oldEff - nw) / oldEff < C.rerouteThreshold) continue;
-        const p = new Int32Array(v.pi + 1 + np.length); p.set(v.path.subarray(0, v.pi + 1)); p.set(np, v.pi + 1); v.path = p; v.wait = 0; this.rerouted++; this.stats.rerouted++; } }
+        const p = new Int32Array(v.pi + 1 + np.length); p.set(v.path.subarray(0, v.pi + 1)); p.set(np, v.pi + 1); v.path = p; v.wait = Math.min(v.wait, C.agentRerouteWaitSec * 0.5); /* QA2 п.3: не обнулять — иначе «вежливый пропуск» на второстепенной не наступает */ this.rerouted++; this.stats.rerouted++; } }
   }
   ensure() {
     const net = this.world.net; const nE = net.edges.length * 2;
@@ -50,6 +50,9 @@ export class Traffic {
   }
   laneLoad(l: number) { const E = this.world.net.edges[l >> 1]; return this.laneW[l] * 7.5 / (E.len * ROAD_TYPES[E.type].lanes); }
   edgeLoad(e: number) { return Math.max(this.laneLoad(e * 2), this.laneLoad(e * 2 + 1)); }
+  /** QA2 п.3: скорость движения агентов. laneSpeed считает нагрузку по весу агентов (w = scale реальных машин) — это спрос для слоя «Пробки» и стоимости
+   *  маршрутов; двигать по ней же — двойной счёт (очередь агентов уже тормозит IDM). Здесь — физическая плотность самих агентов, мягче (balance.congestion.moveLoadK). */
+  moveSpeed(l: number, n: number) { const E = this.world.net.edges[l >> 1]; const T = BALANCE.congestion; const ld = n * 7.5 / (E.len * ROAD_TYPES[E.type].lanes); return ROAD_TYPES[E.type].speed * Math.max(T.moveMinFrac, 1 - T.moveLoadK * Math.min(1, ld * ld)); }
   laneSpeed(l: number) { const E = this.world.net.edges[l >> 1]; const ld = this.laneLoad(l); return ROAD_TYPES[E.type].speed * Math.max(0.12, 1 - 0.85 * Math.min(1, ld * ld)); }
   // A* over directed lanes. typeMask: bitmask of allowed edge types
   astar(src: number, dst: number, typeMask = 15, maxExp = 80000): Int32Array | null {
@@ -105,7 +108,7 @@ export class Traffic {
     if (this.active >= this.cap) return false;
     const path = this.route(src, dst); if (!path || !path.length) return false;
     const l0 = path[0]; const ln = this.lanes[l0]; if (ln.length && this.vehs[ln[ln.length - 1]].s < 10) return false;
-    let free = 0; for (let i = 0; i < path.length; i++) { const E = this.world.net.edges[path[i] >> 1]; free += E.len / ROAD_TYPES[E.type].speed; }
+    let free = 0; for (let i = 0; i < path.length; i++) { const E = this.world.net.edges[path[i] >> 1]; free += E.len / ROAD_TYPES[E.type].speed; } if (type) free /= 0.8; // грузовик едет на 0.8 скорости — и «свободное» время у него своё
     const id = this.freeIds.length ? this.freeIds.pop()! : this.vehs.length;
     const v: Veh = { id, alive: true, type, path, pi: 0, s: 0, v: 5, w: this.scale * (type ? 2 : 1), t: 0, free, city, wait: 0, color: type ? 0xe8e8e8 : CAR_COLORS[Math.floor(this.rnd() * CAR_COLORS.length)], dest: dst };
     this.vehs[id] = v; this.active++; ln.push(id); this.laneW[l0] += v.w; this.activeLanes.add(l0); return true;
@@ -131,13 +134,13 @@ export class Traffic {
     this.modeCache[node] = m; return m;
   }
   rank(t: number) { return [1, 2, 3, 0][t]; }
-  green(node: number, edge: number): boolean {
+  green(node: number, edge: number, wait = 0): boolean {
     const net = this.world.net; const N0 = net.nodes[node]; if (N0.edges.length < 3) return true;
     const mode = this.nodeMode(node); if (mode === 3) return true;
     const E = net.edges[edge];
     if (mode === 2) { // приоритет: главная (старший класс) едет, второстепенная ждёт разрыва в потоке главной
       let top = 0; for (const e of N0.edges) { const X = net.edges[e]; if (X.alive) top = Math.max(top, this.rank(X.type)); }
-      if (this.rank(E.type) >= top) return true;
+      if (this.rank(E.type) >= top || wait > BALANCE.trafficControl.courtesySec) return true; // QA2 п.3: долго ждущего со второстепенной пропускают (иначе очередь растёт без конца)
       const gap = BALANCE.trafficControl.priorityGapM;
       for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive || e === edge || this.rank(X.type) < top) continue; const l = e * 2 + (X.b === node ? 0 : 1); const arr = this.lanes[l]; if (arr && arr.length) { const v = this.vehs[arr[0]]; if (X.len - v.s < gap && v.v > 1) return false; } }
       return true;
@@ -147,7 +150,12 @@ export class Traffic {
     const base = Math.atan2(o0.z - N0.z, o0.x - N0.x); const ang = Math.atan2(o.z - N0.z, o.x - N0.x);
     let rel = ((ang - base) % Math.PI + Math.PI * 2) % Math.PI; const grp = rel < Math.PI / 4 || rel > Math.PI * 3 / 4 ? 0 : 1;
     const cyc = BALANCE.trafficControl.simCycle; const ph = Math.floor((this.time + (node * 7.31) % cyc) / (cyc / 2)) % 2;
-    return ph === grp;
+    if (ph === grp) return true;
+    // QA2 п.3: светофор по вызову — если на поперечном направлении никто не подъезжает (ближе actuatedM), наше направление получает зелёный
+    const R = BALANCE.trafficControl.actuatedM; for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive || e === edge) continue; const ox = net.nodes[X.a === node ? X.b : X.a];
+      let r2 = ((Math.atan2(ox.z - N0.z, ox.x - N0.x) - base) % Math.PI + Math.PI * 2) % Math.PI; const g2 = r2 < Math.PI / 4 || r2 > Math.PI * 3 / 4 ? 0 : 1; if (g2 === grp) continue;
+      const arr = this.lanes[e * 2 + (X.b === node ? 0 : 1)]; if (arr && arr.length && X.len - this.vehs[arr[0]].s < R) return false; }
+    return true;
   }
   step(dt: number) {
     this.time += dt; this.ensure();
@@ -158,12 +166,12 @@ export class Traffic {
       const arr = this.lanes[l]; if (!arr.length) { this.activeLanes.delete(l); continue; }
       const E = net.edges[l >> 1];
       if (!E.alive) { for (const id of arr) this.remove(this.vehs[id], l, false); arr.length = 0; continue; }
-      const len = E.len; const v0b = this.laneSpeed(l); const vmax = ROAD_TYPES[E.type].speed; const endNode = (l & 1) ? E.a : E.b;
+      const nl0 = ROAD_TYPES[E.type].lanes; const len = E.len; const v0b = this.moveSpeed(l, arr.length); const vmax = ROAD_TYPES[E.type].speed; const endNode = (l & 1) ? E.a : E.b;
       let leave = 0;
       for (let idx = 0; idx < arr.length; idx++) {
         const v = this.vehs[arr[idx]]; v.t += dt;
         let gap: number, vl = 0; let canGo = false; let next = -1;
-        if (idx > leave) { const L = this.vehs[arr[idx - 1]]; gap = L.s - v.s - VLEN[L.type]; vl = L.v; }
+        if (idx > leave) { const L = this.vehs[arr[idx - Math.min(nl0, idx - leave)]]; /* QA2 п.3: на 2-полосном ребре очередь — «в два ряда»: держим дистанцию до машины через одну */ gap = L.s - v.s - VLEN[L.type]; vl = L.v; }
         else {
           const toEnd = len - v.s;
           if (v.pi >= v.path.length - 1) { gap = toEnd + 50; canGo = true; }
@@ -171,21 +179,21 @@ export class Traffic {
             next = v.path[v.pi + 1]; const nE = net.edges[next >> 1];
             if (!nE || !nE.alive) { gap = toEnd + 20; canGo = true; next = -2; }
             else {
-              const tail = this.lanes[next]; const space = tail.length ? this.vehs[tail[tail.length - 1]].s - VLEN[v.type] : 1e9;
-              canGo = space > 1 && (toEnd > 25 || this.green(endNode, l >> 1));
-              gap = canGo ? toEnd + Math.min(space, 60) : toEnd - 1;
+              const tail = this.lanes[next]; const nk = ROAD_TYPES[nE.type].lanes; const tv = tail.length >= nk ? this.vehs[tail[tail.length - nk]] : null; const space = tv ? tv.s - VLEN[v.type] + (tv.v > 2 ? tv.v * 0.5 : 0) : 1e9; // QA2 п.3: въезд по свободному ряду; уезжающий хвост не блокирует
+              canGo = (space > 1 || (v.wait > C.squeezeSec && space > -VLEN[v.type])) && (toEnd > 25 || this.green(endNode, l >> 1, v.wait));
+              gap = canGo ? toEnd + Math.min(space, 120) : toEnd - 1; // QA2 п.3: было 60 — машины тормозили перед каждым свободным узлом
             }
           }
         }
         const vt = (v.type ? 0.8 : 1) * v0b;
         const near = Math.abs(net.nodes[endNode].x - this.camX) + Math.abs(net.nodes[endNode].z - this.camZ) < this.lodR;
         if (near) { // IDM
-          const sst = 2 + v.v * 1.3 + v.v * (v.v - vl) / 3.5; const acc = 1.6 * (1 - Math.pow(v.v / Math.max(1, vt), 4) - Math.pow(Math.max(0, sst) / Math.max(0.5, gap), 2));
+          const I = BALANCE.congestion.idm; const sst = I.s0 + v.v * I.T + v.v * (v.v - vl) / I.ab; const acc = I.a * (1 - Math.pow(v.v / Math.max(1, vt), 4) - Math.pow(Math.max(0, sst) / Math.max(0.5, gap), 2));
           v.v = Math.max(0, Math.min(v.v + acc * dt, vmax * 1.05));
         } else v.v = vt; // aggregated mode
         v.v = Math.min(v.v, Math.max(0, gap) / dt);
         v.s += v.v * dt;
-        if (v.v < 0.3) v.wait += dt; else v.wait = 0;
+        if (v.v < 0.3 || (next >= 0 && !canGo && len - v.s < 3)) v.wait += dt; else v.wait = 0; // QA2 п.3: голова, «ползущая» к стоп-линии, тоже ждёт (иначе не срабатывают вежливый пропуск и протискивание)
         if (v.s >= len) {
           if (v.pi >= v.path.length - 1 || next === -2) { this.remove(v, l, next !== -2); leave++; continue; }
           if (canGo) { v.s -= len; v.pi++; moves.push([v, next]); this.laneW[l] = Math.max(0, this.laneW[l] - v.w); leave++; continue; }

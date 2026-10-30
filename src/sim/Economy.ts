@@ -180,7 +180,7 @@ export class Economy {
       }
     }
     // agent scale: keep active agents near cap
-    const desired = totalTrips / dtH * 0.35; this.traffic.scale = clamp(this.traffic.scale * 0.8 + 0.2 * Math.max(1, desired / (this.traffic.cap * 0.75)), 1, 1e5);
+    const desired = totalTrips / dtH * 0.35; this.traffic.scale = clamp(this.traffic.scale * 0.8 + 0.2 * Math.max(1, desired / (this.traffic.cap * BALANCE.congestion.agentFill)), 1, 1e5);
     this.trade(dtD);
     // budget
     L.roads += this.roadUpkeep() * dtD; for (const ln of this.loans) L.interest += ln.amount * ln.rate / 365 * dtD;

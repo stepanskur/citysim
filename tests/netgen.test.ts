@@ -59,5 +59,10 @@ for (const [seed, size] of [[7, 2], [42, 1], [1234, 0], [11, 1], [99, 2], [2024,
       mx = Math.max(mx, 180 - Math.acos(Math.max(-1, Math.min(1, d[0][0] * d[1][0] + d[0][1] * d[1][1]))) * 180 / Math.PI); });
     ok(mx <= 12, `seed ${seed}: макс. излом шоссе ${mx.toFixed(1)}° (≤ 12°)`); }
   console.log('   ' + ((globalThis as any).__netgenLog || []).join('; '));
+  if (seed === 7 || seed === 99) { // A11: на въезде шоссе в город проспект проходит под эстакадой (развязка), а не в уровне
+    const E = net.edges.filter((e: any) => e.alive), H = E.filter((e: any) => e.type === 2 && e.lv === 1), A = E.filter((e: any) => e.type === 1 && !e.lv); let under = 0;
+    const X = (a: any, b: any, c: any, d: any) => { const r = [b.x - a.x, b.z - a.z], s = [d.x - c.x, d.z - c.z], den = r[0] * s[1] - r[1] * s[0]; if (Math.abs(den) < 1e-9) return false; const t = ((c.x - a.x) * s[1] - (c.z - a.z) * s[0]) / den, u = ((c.x - a.x) * r[1] - (c.z - a.z) * r[0]) / den; return t > 0 && t < 1 && u > 0 && u < 1; };
+    for (const h of H) for (const q of A) if (X(net.nodes[h.a], net.nodes[h.b], net.nodes[q.a], net.nodes[q.b])) under++;
+    ok(under >= 1, `seed ${seed}: проспектов под эстакадой шоссе (развязки на въезде) ${under} (≥ 1)`); }
 }
 if (fail) { console.log('Провалено: ' + fail); process.exit(1); } else console.log('Все проверки сети пройдены');

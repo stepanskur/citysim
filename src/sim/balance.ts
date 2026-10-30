@@ -22,6 +22,7 @@ export interface RoadSystemConsts {
 }
 
 export interface CongestionConsts {
+  /** QA2 п.3: замедление движения от физической плотности агентов на полосе: v = vmax·max(moveMinFrac, 1 − moveLoadK·плотн²) */ moveLoadK: number; moveMinFrac: number; /** IDM: ускорение м/с², интервал с, мин. зазор м, 2√(ab) */ /** QA2 п.3: голова очереди, ждущая въезда дольше squeezeSec, протискивается в занятую полосу (разрыв клинча перекрёстка) */ squeezeSec: number; /** доля лимита агентов, на которую считается scale */ agentFill: number; idm: { a: number; T: number; s0: number; ab: number };
   /** пороги уровней V/C: dense, jam, gridlock */ levelVC: { dense: number; jam: number; gridlock: number };
   /** цвета оверлея по уровням (hex) */ levelColors: { free: string; dense: string; jam: string; gridlock: string };
   /** приоритетный узел: критический интервал и интервал следования, с */ gapCriticalSec: number; gapFollowSec: number;
@@ -56,7 +57,7 @@ export interface NetGenConsts {
   /** потеря уровня зданием без доступа: дней на уровень */ noAccessDecayDays: number;
   /** генерация шоссе (запрос Степана): сглаживание rMin по классу (road-curves), мин. шаг наземных развязок, м; запас рампы у эстакады, м;
    *  лимит пересечений одной пары «шоссе × улица» (проверка в tests/netgen); штраф клетки A* за существующую дорогу */
-  highway: { junctionStep: number; rampMargin: number; maxCrossPerPair: number; roadCellPenalty: number; segLen: number };
+  highway: { junctionStep: number; rampMargin: number; maxCrossPerPair: number; roadCellPenalty: number; segLen: number; /** A11: простая развязка «полуромб» — шоссе эстакадой над проспектом, 2 съезда-улицы на проспект в diamondOff м от пересечения; false — наземный узел */ diamond: boolean; diamondOff: number };
   /** пояса роста: границы d/r (центр, средний, пригород, окрестности) */ beltBounds: [number, number, number, number];
   /** вероятность «хаотичного» примыкания в иерархии */ hierarchyNoise: number;
   /** мин. длина цепочки одного класса, м */ minChainLen: { highway: number; avenue: number; street: number; lane: number };
@@ -83,7 +84,7 @@ export interface ZoningBalance {
   /** вероятность наследования темы кварталом */ themeKeepProb: number;
 }
 export interface TrafficControlBalance {
-  /** свои: цикл в симуляции, с; угол Y-развилки, °; зазор приоритета, м */ simCycle: number; yForkDeg: [number, number]; priorityGapM: number;
+  /** свои: цикл в симуляции, с; угол Y-развилки, °; зазор приоритета, м */ simCycle: number; yForkDeg: [number, number]; priorityGapM: number; /** QA2 п.3: светофор по вызову — радиус обнаружения на поперечном подходе, м */ actuatedM: number; /** QA2 п.3: через сколько с ожидания второстепенную пропускают, с */ courtesySec: number;
   /** ёмкость подхода на полосу, авт/ч: uncontrolled, allWayStop */ uncontrolledCap: number; allWayStopCap: number;
   /** зазоры для второстепенного подхода (HCM), с */ criticalGap: number; followUpTime: number;
   /** насыщение светофора, авт/ч зелёного; цикл мин/по умолч./макс, с; мин. зелёный с; потерянное время на фазу с */ saturationFlow: number; cycleMin: number; cycleDefault: number; cycleMax: number; minGreen: number; lostTimePerPhase: number;
@@ -594,6 +595,7 @@ export const BALANCE: BalanceConstants = {
   },
   congestion: {
     levelVC: { dense: 0.6, jam: 0.9, gridlock: 1.2 },
+    moveLoadK: 0, moveMinFrac: 0.35, squeezeSec: 6, agentFill: 0.75, idm: { a: 2.5, T: 0.9, s0: 1.5, ab: 3.5 }, // QA2 п.3: было a 1.6, T 1.3, s0 2
     levelColors: { free: '#3cb043', dense: '#f2c230', jam: '#e04848', gridlock: '#7a1020' },
     gapCriticalSec: 6.5,
     gapFollowSec: 3.5,
@@ -649,7 +651,7 @@ export const BALANCE: BalanceConstants = {
     deadEndMax: 300,
     accessDist: 24,
     freightMaxGrade: 0.06,
-    highway: { junctionStep: 600, rampMargin: 30, maxCrossPerPair: 2, roadCellPenalty: 6, segLen: 40 },
+    highway: { junctionStep: 600, rampMargin: 30, maxCrossPerPair: 2, roadCellPenalty: 6, segLen: 40, diamond: true, diamondOff: 70 },
     lots: {
       lane: { depthTiles: 2, maxLevelShare: 0.4, comDemandMult: 0.8 },
       street: { depthTiles: 2, maxLevelShare: 1, comDemandMult: 1 },
@@ -784,7 +786,7 @@ export const BALANCE: BalanceConstants = {
     cost: { priority: 2000, stop: 1000, signal: 25000, roundabout1: 40000, roundabout2: 90000 },
     simCycle: 30, // цикл светофора в симуляции, с (ускоренное игровое время)
     yForkDeg: [30, 60],
-    priorityGapM: 30, // второстепенная ждёт, если машина главной ближе, м
+    priorityGapM: 20, actuatedM: 40, courtesySec: 10, // второстепенная ждёт, если машина главной ближе, м (QA2 п.3: было 30)
     upkeep: { priority: 20, stop: 10, signal: 300, roundabout1: 150, roundabout2: 300 },
     laneCap: { lane: 400, street: 700, avenue: 1600, highway: 2000, ramp: 1500 },
     maxLanes: { lane: 1, street: 2, avenue: 4, highway: 5, ramp: 2 },
