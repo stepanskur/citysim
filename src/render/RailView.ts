@@ -36,6 +36,7 @@ export class RailView {
         prev = o1;
         if (Math.max(o0, o1) < -1.5) { try { tube.push(buildTunnelTube([pa, pb], 9, 6, y)); tube.push(buildTrack([pa, pb], { y, ballast: false, concrete: true })); axis.push(this.ribbon(pa, pb, y + 7, 3.2)); } catch { /* */ } continue; }
         try { surf.push(buildTrack([pa, pb], { y: y + 0.02, ballast: lv === 0 && (E.type !== RAIL.TRAM || !this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2)) /* QA3 №2: трамвай вне дороги — на балласте, виден */, concrete: E.type !== RAIL.TRAM })); } catch { /* */ }
+        if (E.type === RAIL.TRAM && lv === 0) surf.push(this.ribbon(pa, pb, y - 0.2, this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2) ? BALANCE.render.tramBedW : BALANCE.render.tramBedWBallast, BALANCE.render.tramBedColor)); // QA4 п.8: заметное полотно трамвая под шпалами
         if (lv > 0) { const gy = w.hAt((pa.x + pb.x) / 2, (pa.z + pb.z) / 2); if (y - Math.max(gy, 0) >= 2) try { br.push(buildBridge([pa, pb], 6, y - 0.05, Math.min(gy, y - 3), k % 5 === 4 ? (s1 - s0) * 0.999 : 1e6)); } catch { /* */ } }
       } }
     // станции по линиям
@@ -66,5 +67,5 @@ export class RailView {
         const vx = B.x - A.x, vz = B.z - A.z, L2 = vx * vx + vz * vz || 1; const t = Math.max(0, Math.min(1, ((x - A.x) * vx + (z - A.z) * vz) / L2));
         if (Math.hypot(A.x + vx * t - x, A.z + vz * t - z) < 6) return true; } }
     return false; }
-  ribbon(a: { x: number; z: number }, b: { x: number; z: number }, y: number, wd: number) { const L = Math.hypot(b.x - a.x, b.z - a.z) + wd * 0.5; const g = new THREE.BoxGeometry(L, 0.6, wd); g.rotateY(-Math.atan2(b.z - a.z, b.x - a.x)); g.translate((a.x + b.x) / 2, y, (a.z + b.z) / 2); const c = new THREE.Color(TUNNEL_AXIS); const n = g.attributes.position.count; const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv'); return g; }
+  ribbon(a: { x: number; z: number }, b: { x: number; z: number }, y: number, wd: number, color = TUNNEL_AXIS) { const L = Math.hypot(b.x - a.x, b.z - a.z) + wd * 0.5; const g = new THREE.BoxGeometry(L, 0.6, wd); g.rotateY(-Math.atan2(b.z - a.z, b.x - a.x)); g.translate((a.x + b.x) / 2, y, (a.z + b.z) / 2); const c = new THREE.Color(color); const n = g.attributes.position.count; const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv'); return g; }
 }

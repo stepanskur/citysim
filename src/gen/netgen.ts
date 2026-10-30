@@ -79,6 +79,44 @@ export function overlapDup(A: P2, B: P2, P: P2, Q: P2, thr: number): boolean {
   const s0 = pr(S[0]), s1 = pr(S[1]); const lo = Math.max(0, Math.min(s0, s1)), hi = Math.min(Lt, Math.max(s0, s1)); if (hi - lo < Ls * 0.6) return false;
   return lat(S[0]) <= thr + Math.max(0, -Math.min(s0, s1), Math.max(s0, s1) - Lt) && lat(S[1]) <= thr + Math.max(0, -Math.min(s0, s1), Math.max(s0, s1) - Lt) && Math.max(lat(S[0]), lat(S[1])) <= thr;
 }
+
+/** QA4 п.5/п.6: (а) острый угол (< hwAcuteDeg) между шоссе и примыкающей дорогой в узле шоссе — примыкание убирается,
+ *  если дальний конец остаётся с ≥2 другими рёбрами (связность не рвётся); (б) связные цепочки проспектов короче regAvMinM — улицы. */
+export function qa4Fix(net: RoadNet): { acute: number; shortAv: number } {
+  const T = BALANCE.netgen as any; const lim = (T.hwAcuteDeg ?? 30) * Math.PI / 180; let acute = 0, shortAv = 0;
+  const al = (n: number) => net.nodes[n].edges.filter(e => net.edges[e].alive);
+  const ang = (n: number, e: number) => { const E = net.edges[e]; const o = net.nodes[E.a === n ? E.b : E.a], N0 = net.nodes[n]; return Math.atan2(o.z - N0.z, o.x - N0.x); };
+  for (let n = 0; n < net.nodes.length; n++) { if (!net.nodes[n].alive) continue; let again = true;
+    while (again) { again = false; const es = al(n); if (es.length < 3 || !es.some(e => net.edges[e].type === 2)) break;
+      for (let i = 0; i < es.length && !again; i++) for (let j = i + 1; j < es.length && !again; j++) { let d = Math.abs(ang(n, es[i]) - ang(n, es[j])); if (d > Math.PI) d = 2 * Math.PI - d; if (d >= lim) continue;
+        const cand = [es[i], es[j]].filter(e => net.edges[e].type !== 2).sort((a, b) => net.edges[a].len - net.edges[b].len);
+        for (const e of cand) { const E = net.edges[e]; const far = E.a === n ? E.b : E.a; const rest = es.filter(x => x !== e); let bend = 0; if (rest.length === 2 && rest.every(x => net.edges[x].type === 2)) { let dd = Math.abs(ang(n, rest[0]) - ang(n, rest[1])); if (dd > Math.PI) dd = 2 * Math.PI - dd; bend = Math.PI - dd; } if (al(far).length >= 3 && bend < 0.001 && !(rest.length === 2 && rest.every(x => net.edges[x].type === 2))) { net.removeEdge(e); acute++; again = true; break; } } } } }
+  // QA4 п.4: «веер» — узел с > fanMaxDeg рёбрами (без шоссе): убираем короткие рёбра, чей дальний конец остаётся с ≥2 рёбрами
+  const fanMax = T.fanMaxDeg ?? 4;
+  for (let n = 0; n < net.nodes.length; n++) { if (!net.nodes[n].alive) continue; let es = al(n); if (es.length <= fanMax || es.some(e => net.edges[e].type === 2)) continue;
+    for (const e of es.slice().sort((a, b) => net.edges[a].type - net.edges[b].type || net.edges[a].len - net.edges[b].len)) { if (al(n).length <= fanMax) break; const E = net.edges[e]; const far = E.a === n ? E.b : E.a; if (al(far).length >= 3) { net.removeEdge(e); acute++; } } }
+  // QA4 п.4: параллельные несмежные рёбра ближе parKillM (угол < 15°, один уровень, не шоссе) — младшее убираем, если оба его конца сохраняют ≥2 рёбра
+  const pk = T.parKillM ?? 20;
+  for (let e = 0; e < net.edges.length; e++) { const E = net.edges[e]; if (!E.alive || E.type === 2 || E.len < 20) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const ue = Math.atan2(B.z - A.z, B.x - A.x);
+    for (const f of net.edgesNear((A.x + B.x) / 2, (A.z + B.z) / 2, E.len / 2 + pk)) { if (f === e) continue; const F = net.edges[f]; if (!F.alive || F.type === 2 || F.len < 20 || (F.lv || 0) !== (E.lv || 0)) continue; if (F.a === E.a || F.a === E.b || F.b === E.a || F.b === E.b) continue;
+      const C = net.nodes[F.a], D = net.nodes[F.b]; let d = Math.abs(Math.atan2(D.z - C.z, D.x - C.x) - ue) % Math.PI; d = Math.min(d, Math.PI - d); if (d > 15 * Math.PI / 180) continue;
+      const vx = D.x - C.x, vz = D.z - C.z, l = vx * vx + vz * vz; const mx = (A.x + B.x) / 2, mz = (A.z + B.z) / 2; const t = Math.max(0, Math.min(1, ((mx - C.x) * vx + (mz - C.z) * vz) / l)); if (Math.hypot(C.x + vx * t - mx, C.z + vz * t - mz) >= pk) continue;
+      const k = E.type < F.type || (E.type === F.type && E.len < F.len) ? e : f; const K = net.edges[k];
+      const okEnd = (n: number) => { const r = al(n); if (r.length >= 3) return -1; if (r.length !== 2) return -2; const o = r.find(x => x !== k)!; const O = net.edges[o]; return O.type !== 2 && al(O.a === n ? O.b : O.a).length >= 3 ? o : -2; };
+      const ka = okEnd(K.a), kb = okEnd(K.b); if (ka !== -2 && kb !== -2) { net.removeEdge(k); acute++; if (ka >= 0) net.removeEdge(ka); if (kb >= 0) net.removeEdge(kb); if (k === e) break; } } }
+  unifyClasses(net); // после удалений: без смены класса в узлах степени 2
+  const minL = T.regAvMinM ?? 400; const seen = new Set<number>();
+  for (let e = 0; e < net.edges.length; e++) { const E = net.edges[e]; if (!E.alive || E.type !== 1 || seen.has(e)) continue; const chain: number[] = [], st = [e]; seen.add(e); let len = 0, hwT = false;
+    while (st.length) { const x = st.pop()!; chain.push(x); len += net.edges[x].len; for (const nn of [net.edges[x].a, net.edges[x].b]) for (const f of net.nodes[nn].edges) { const F = net.edges[f]; if (F.alive && F.type === 2) hwT = true; if (F.alive && F.type === 1 && !seen.has(f)) { seen.add(f); st.push(f); } } }
+    if (hwT) { const hwN = [...new Set(chain.flatMap(x => [net.edges[x].a, net.edges[x].b]))].filter(m => net.nodes[m].edges.some(f => net.edges[f].alive && net.edges[f].type === 2)); // QA4 (затор s7 6400,5400): проспект от шоссе продлеваем по прямой улицами до hwFeedAvM, обрываясь только в перекрёстке (≥3 рёбер)
+      const ends = new Map<number, number>(); for (const x of chain) for (const nn of [net.edges[x].a, net.edges[x].b]) ends.set(nn, (ends.get(nn) || 0) + 1);
+      for (const [n0, c] of ends) { if (c !== 1 || net.nodes[n0].edges.some(f => net.edges[f].alive && net.edges[f].type === 2)) continue; let n = n0, prevE = chain.find(x => net.edges[x].a === n0 || net.edges[x].b === n0)!; let L = Math.min(len, ...hwN.map(m => Math.hypot(net.nodes[m].x - net.nodes[n0].x, net.nodes[m].z - net.nodes[n0].z))); const path: number[] = [];
+        for (let it = 0; it < 40; it++) { if (L >= (T.hwFeedAvM ?? 500) && al(n).length >= 3) break; const a0 = ang(n, prevE) + Math.PI; let best = -1, bd = 100 * Math.PI / 180; for (const f of al(n)) { if (f === prevE || net.edges[f].type !== 0 || (net.edges[f].lv || 0) !== 0) continue; { const o = net.edges[f].a === n ? net.edges[f].b : net.edges[f].a; if (al(o).length === 1) continue; } let d = Math.abs(ang(n, f) - a0) % (2 * Math.PI); d = Math.min(d, 2 * Math.PI - d); if (d < bd) { bd = d; best = f; } }
+          if (best < 0) { path.length = 0; break; } path.push(best); L += net.edges[best].len; prevE = best; n = net.edges[best].a === n ? net.edges[best].b : net.edges[best].a; if (al(n).length === 1) { path.length = 0; break; } }
+        if (path.length && al(n).length >= 3) { for (const f of path) net.edges[f].type = 1; shortAv += path.length; len += L; } } }
+    if (len < minL && !hwT) for (const x of chain) { net.edges[x].type = 0; shortAv++; } }
+  return { acute, shortAv };
+}
 export function tidyNetwork(net: RoadNet, W: number[]): { dup: number; dead: number; shortAv: number; tangle: number; feeder: number } {
   const T = BALANCE.netgen as any; const deadThr = T.deadEndJoin ?? 18, avMin = T.avenueMinLen ?? 120; let dup = 0, dead = 0, shortAv = 0, tangle = 0, feeder = 0;
   for (let e = 0; e < net.edges.length; e++) { const E = net.edges[e]; if (!E.alive || E.type === 2 || E.lv) continue; const A = net.nodes[E.a], B = net.nodes[E.b];

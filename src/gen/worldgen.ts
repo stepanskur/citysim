@@ -1,6 +1,6 @@
 import { mulberry32, Noise, smooth, clamp, lerp, MinHeap } from '../util';
 import { RoadNet, ROAD_TYPES } from '../world/RoadNet';
-import { spacingOk, unifyClasses, repairNetwork, tidyNetwork, smoothHighwayKinks, fixAvenueDeadEnds, closeDeadEndGaps, regularizeNetwork, components } from './netgen';
+import { qa4Fix, spacingOk, unifyClasses, repairNetwork, tidyNetwork, smoothHighwayKinks, fixAvenueDeadEnds, closeDeadEndGaps, regularizeNetwork, components } from './netgen';
 import { BALANCE } from '../sim/balance';
 import { LEVEL_DECK, LEVEL_GRADE } from '../world/World';
 import { filletPolyline } from '../../design/road-curves';
@@ -270,6 +270,8 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
   const HWC = BALANCE.netgen.highway; const RAMP = LEVEL_DECK / LEVEL_GRADE + HWC.rampMargin;
   for (const E of net.edges) { if (!E.alive) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const n = Math.ceil(E.len / (G / 2)); const seen = new Set<number>();
     for (let q = 0; q <= n; q++) { const i = clamp(Math.floor((A.x + (B.x - A.x) * q / n) / G), 0, GN - 1), j = clamp(Math.floor((A.z + (B.z - A.z) * q / n) / G), 0, GN - 1); const k = j * GN + i; if (!seen.has(k)) { seen.add(k); gcost[k] += HWC.roadCellPenalty; } } }
+  // QA4 п.7: шоссе обходит ядра городов (ворота у края — gateK)
+  for (const c of cities) { const R = c.r * HWC.coreK; for (let j = Math.max(0, Math.floor((c.z - R) / G)); j <= Math.min(GN - 1, Math.floor((c.z + R) / G)); j++) for (let i = Math.max(0, Math.floor((c.x - R) / G)); i <= Math.min(GN - 1, Math.floor((c.x + R) / G)); i++) if (Math.hypot((i + 0.5) * G - c.x, (j + 0.5) * G - c.z) < R) gcost[j * GN + i] += HWC.corePenalty; }
   const dp = (P: [number, number][], tol: number): [number, number][] => { if (P.length < 3) return P; const [a, b] = [P[0], P[P.length - 1]]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; let mi = -1, md = 0;
     for (let i = 1; i < P.length - 1; i++) { const d = Math.abs((b[0] - a[0]) * (a[1] - P[i][1]) - (a[0] - P[i][0]) * (b[1] - a[1])) / L; if (d > md) { md = d; mi = i; } }
     if (md <= tol) return [a, b]; const l = dp(P.slice(0, mi + 1), tol), r = dp(P.slice(mi), tol); return [...l.slice(0, -1), ...r]; };
@@ -333,7 +335,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
   const hwMark = new Uint8Array(GN * GN);
   const centerNode = (c: CityInfo) => net.findNode(c.x, c.z, c.r);
   // «ворота» города: шоссе подходит к узлу на полпути от центра в сторону цели, а не в центр
-  const gateNode = (c: CityInfo, tx: number, tz: number) => { const d = Math.hypot(tx - c.x, tz - c.z) || 1; const g = net.findNode(c.x + (tx - c.x) / d * c.r * 0.55, c.z + (tz - c.z) / d * c.r * 0.55, c.r * 0.35); return g >= 0 ? g : centerNode(c); };
+  const gateNode = (c: CityInfo, tx: number, tz: number) => { const d = Math.hypot(tx - c.x, tz - c.z) || 1; const g = net.findNode(c.x + (tx - c.x) / d * c.r * BALANCE.netgen.highway.gateK, c.z + (tz - c.z) / d * c.r * BALANCE.netgen.highway.gateK, c.r * 0.35); return g >= 0 ? g : centerNode(c); };
   // MST + extra
   const inTree = [0]; const rest = cities.slice(1).map(c => c.id); const links: [number, number][] = [];
   while (rest.length) {
@@ -376,7 +378,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
       (a, b) => { const A = net.nodes[a], B = net.nodes[b]; addHighway(gpath(A.x, A.z, B.x, B.z), a, b); });
     // второй проход чистки: починка связности и шоссе-перемычки могли дать новые дубли/тупики
     for (let pass = 0; pass < 2; pass++) { const td = tidyNetwork(net, BALANCE.netgen.specW); genLog.push(`чистка-${pass + 2}: дублей ${td.dup}, тупиков ${td.dead}, сплетений ${td.tangle}`); if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), genLog); }
-    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push('проспектов-тупиков исправлено: ' + fixAvenueDeadEnds(net)); genLog.push('изломов шоссе снято: ' + smoothHighwayKinks(net)); genLog.push(`развязок на въездах шоссе: ${entryInterchanges(net, RAMP)}`); genLog.push(`тупиков у дорог соединено: ${closeDeadEndGaps(net, BALANCE.netgen.deadEndCloseM)}`); for (let rp = 0; rp < 4; rp++) { const rl: string[] = []; tidyNetwork(net, BALANCE.netgen.specW); fixAvenueDeadEnds(net); if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), rl); rl.push('классы: ' + unifyClasses(net)); regularizeNetwork(net, []); unifyClasses(net); fixAvenueDeadEnds(net); const m = regularizeNetwork(net, rl); unifyClasses(net); if (rp === 3 || (m.close + m.acute + m.deadNear + m.par + m.shortAv === 0 && components(net) === 1)) { genLog.push(...rl); if (components(net) === 1) break; } } genLog.push(`шоссе: развязок-ромбов ${hwLog.interchange}, узлов в уровне ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}, стыков шоссе ${hwLog.hwMeet}`); (globalThis as any).__netgenLog = genLog; }
+    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push('проспектов-тупиков исправлено: ' + fixAvenueDeadEnds(net)); genLog.push('изломов шоссе снято: ' + smoothHighwayKinks(net)); { const q = qa4Fix(net); genLog.push(`QA4: острых примыканий к шоссе убрано ${q.acute}, коротких проспектов → улицы ${q.shortAv}`); } genLog.push(`развязок на въездах шоссе: ${entryInterchanges(net, RAMP)}`); genLog.push(`тупиков у дорог соединено: ${closeDeadEndGaps(net, BALANCE.netgen.deadEndCloseM)}`); for (let rp = 0; rp < 4; rp++) { const rl: string[] = []; tidyNetwork(net, BALANCE.netgen.specW); fixAvenueDeadEnds(net); if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), rl); rl.push('классы: ' + unifyClasses(net)); regularizeNetwork(net, []); unifyClasses(net); fixAvenueDeadEnds(net); const m = regularizeNetwork(net, rl); unifyClasses(net); qa4Fix(net); if (rp === 3 || (m.close + m.acute + m.deadNear + m.par + m.shortAv === 0 && components(net) === 1)) { genLog.push(...rl); if (components(net) === 1) break; } } genLog.push(`шоссе: развязок-ромбов ${hwLog.interchange}, узлов в уровне ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}, стыков шоссе ${hwLog.hwMeet}`); (globalThis as any).__netgenLog = genLog; }
   progress?.('Зонирование...');
   const road = new Uint8Array(N * N);
   for (const e of net.edges) { if (!e.alive) continue; const A = net.nodes[e.a], B = net.nodes[e.b]; markRoadTiles(N, road, A.x, A.z, B.x, B.z, e.type, ROAD_TYPES[e.type].w); }

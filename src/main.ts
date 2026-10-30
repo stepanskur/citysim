@@ -22,6 +22,10 @@ function start(seed: number, size: number, snap?: any, neighbors = +(params.get(
     attachRoutes(g); if (snap?.routes) try { (g as any).routes.load(snap.routes); } catch (e) { console.warn('routes load', e); }
     try { attachEngage(g, snap); } catch (e) { console.error('engage', e); }
     (window as any).debugInfo = () => ({ cities: g.eco.cities.map(c => [c.name, Math.round(c.pop)]), agents: g.traffic.active, money: Math.round(g.eco.money), fps: Math.round(g.fps), lines: g.transit.lines.length, q: g.eco.spawnQueue.length, min: g.eco.minutes, st: g.traffic.stats, scale: g.traffic.scale });
+    { const g2: any = g; (window as any).debugInfo2 = undefined; const di = (window as any).debugInfo; (window as any).debugInfo = () => { let n = 0, sv = 0; for (const v of g2.traffic.vehs) if (v && v.alive) { n++; sv += v.v; } return { ...di(), avgSpeed: n ? +(sv / n).toFixed(2) : 0 }; }; /* QA4 п.9: средняя скорость машин, м/с */
+      g2.qa = { setSpeed: (i: number) => { g2.speed = i; }, jump: (x: number, z: number, d = 300) => g2.r.ctl.jump(x, z, d), overlay: (o: string) => g2.ui.setOverlay(o), hour: (h: number | null) => { g2.autoTime = h === null; if (h !== null) g2.fixedHour = h; }, stats: () => (window as any).debugInfo() };
+      const lab = () => document.querySelectorAll('button[data-tip]').forEach(b => { const t = b.getAttribute('data-tip')!; if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', t); const k = b.getAttribute('data-t') ? 'tool-' + b.getAttribute('data-t') : b.getAttribute('data-p') ? 'panel-' + b.getAttribute('data-p') : b.id ? '' : b.closest('#speeds') ? 'speed-' + [...b.parentElement!.children].indexOf(b) : ''; if (k && !b.id) b.id = k; });
+      lab(); setInterval(lab, 2000); } // QA4 п.9: подписи/aria-label/стабильные id у кнопок
     w.terminate();
   };
   w.postMessage({ seed, sizeIdx: size, neighbors: snap?.neighbors ?? neighbors });

@@ -45,7 +45,7 @@ export interface CongestionConsts {
 }
 
 export interface NetGenConsts { /** QA3 №6: порог соединения тупика с дорогой, м */ deadEndCloseM: number;
-  deadEndJoin: number; regMinNodeM: number; regAcuteDeg: number; regParM: number; regDeadNearM: number; regAvMinM: number; regStubM: number; regPasses: number; avenueMinLen: number; specW: number[]; villageMaxR: number; culDeSacMinGap?: number; ringMinR: number; tangleDeg: number; feederLen: number; hwCellPenalty: number;
+  deadEndJoin: number; regMinNodeM: number; regAcuteDeg: number; regParM: number; regDeadNearM: number; regAvMinM: number; /** QA4 п.5: мин. угол примыкания к шоссе, ° */ hwAcuteDeg: number; regStubM: number; regPasses: number; avenueMinLen: number; specW: number[]; villageMaxR: number; culDeSacMinGap?: number; ringMinR: number; tangleDeg: number; feederLen: number; hwCellPenalty: number;
   /** мин. расстояние между параллельными дорогами, м */ parallelMin: { lane: number; street: number; avenue: number; highway: number };
   /** мин. шаг перекрёстков вдоль дороги, м */ junctionSpacing: { lane: number; street: number; avenue: number };
   /** мин. угол в узле, град */ minAngleDeg: { lane: number; street: number; avenue: number; highway: number };
@@ -58,7 +58,7 @@ export interface NetGenConsts { /** QA3 №6: порог соединения т
   /** потеря уровня зданием без доступа: дней на уровень */ noAccessDecayDays: number;
   /** генерация шоссе (запрос Степана): сглаживание rMin по классу (road-curves), мин. шаг наземных развязок, м; запас рампы у эстакады, м;
    *  лимит пересечений одной пары «шоссе × улица» (проверка в tests/netgen); штраф клетки A* за существующую дорогу */
-  highway: { junctionStep: number; rampMargin: number; maxCrossPerPair: number; roadCellPenalty: number; segLen: number; /** A11: простая развязка «полуромб» — шоссе эстакадой над проспектом, 2 съезда-улицы на проспект в diamondOff м от пересечения; false — наземный узел */ diamond: boolean; diamondOff: number };
+  highway: { /** QA4 п.7: ворота шоссе на доле радиуса города; штраф клеток ядра (< coreK·r) для трассы A* */ gateK: number; gateAvBonus: number; coreK: number; corePenalty: number; junctionStep: number; rampMargin: number; maxCrossPerPair: number; roadCellPenalty: number; segLen: number; /** A11: простая развязка «полуромб» — шоссе эстакадой над проспектом, 2 съезда-улицы на проспект в diamondOff м от пересечения; false — наземный узел */ diamond: boolean; diamondOff: number };
   /** пояса роста: границы d/r (центр, средний, пригород, окрестности) */ beltBounds: [number, number, number, number];
   /** вероятность «хаотичного» примыкания в иерархии */ hierarchyNoise: number;
   /** мин. длина цепочки одного класса, м */ minChainLen: { highway: number; avenue: number; street: number; lane: number };
@@ -315,7 +315,7 @@ export interface BalanceConstants {
   lines: TransitLinesConsts;
   /** этап H (THEMES_SPEC §5): размер квартала темы, м; режим «Смешанный»: радиус исторического центра, м, и его эпоха (лет игры); годы кольца новостроек; после какого года — base; доля вкраплений; шаг квантования этажей */
   themes: { quarterSize: number; coreRadius: number; coreEpoch: number; ringEpoch: [number, number]; lateEpoch: number; mixShare: number; floorStep: number };
-  /** QA2 п.2: подгрузка чанков по бюджету кадра */ render: { /** автобусная остановка: масштаб модели, высота столба, размер таблички, м */ busStopScale: number; signalScale: number; signalLampK: number; lampDotNear: number; grassNightDim: number; farRoadDark: number; terrainBlurFar: number; terrainFarFlatten: number; nightRoadEmissive: number; busStopPoleH: number; busStopSign: number; chunkOpsPerFrame: number; chunkMsPerFrame: number; /** QA4 п.1: ближние чанки — дороги вне очереди: радиус, м; чанков за кадр */ roadFirstM: number; roadFirstOps: number; farLots: boolean; /** E2: дальность LOD 2/1 от камеры, м; гистерезис, м */ lodNear: number; lodMid: number; lodHyst: number };
+  /** QA2 п.2: подгрузка чанков по бюджету кадра */ render: { /** автобусная остановка: масштаб модели, высота столба, размер таблички, м */ busStopScale: number; signalScale: number; signalLampK: number; lampDotNear: number; grassNightDim: number; farRoadDark: number; terrainBlurFar: number; terrainFarFlatten: number; nightRoadEmissive: number; busStopPoleH: number; busStopSign: number; chunkOpsPerFrame: number; chunkMsPerFrame: number; /** QA4 п.1: ближние чанки — дороги вне очереди: радиус, м; чанков за кадр */ roadFirstM: number; roadFirstOps: number; /** QA4 п.8: полотно трамвая: ширина, м; цвет */ tramBedW: number; tramBedWBallast: number; /** QA4 п.3: яркость воды ночью (доля дневной) */ nightWaterK: number; /** QA4 п.3: цвет дальней земли ночью и доля подмеса */ nightFarColor: number; nightFarTint: number; tramBedColor: number; farLots: boolean; /** E2: дальность LOD 2/1 от камеры, м; гистерезис, м */ lodNear: number; lodMid: number; lodHyst: number };
   zoning: ZoningBalance;
   trafficControl: TrafficControlBalance;
   construction: ConstructionBalance;
@@ -636,7 +636,7 @@ export const BALANCE: BalanceConstants = {
   },
   netgen: {
     deadEndCloseM: 20, // QA3 №6: тупик ближе — соединяется с дорогой
-    deadEndJoin: 18, /* регуляризация сети (Степан/QA3) */ regMinNodeM: 40, regAcuteDeg: 35, regParM: 12, regDeadNearM: 10, regAvMinM: 400, regStubM: 40, regPasses: 12, avenueMinLen: 120, specW: [7, 12, 14, 4.5], villageMaxR: 600, /* посёлок ≤ villageMaxPop (5000) — по радиусу */ ringMinR: 2500, tangleDeg: 22, feederLen: 300, hwCellPenalty: 40, // A1 ширины полотна; A7 кольцо от радиуса города, порог «сплетения»; A4 длина проспекта-подводки к шоссе; A3/A5 штраф клеток у шоссе // USER_FEEDBACK_2 A2/A6: порог достраивания тупика (м), мин. длина изолированного проспекта (м)
+    deadEndJoin: 18, /* регуляризация сети (Степан/QA3) */ regMinNodeM: 40, regAcuteDeg: 35, regParM: 12, regDeadNearM: 10, regAvMinM: 400, hwAcuteDeg: 35, regStubM: 40, regPasses: 12, avenueMinLen: 120, specW: [7, 12, 14, 4.5], villageMaxR: 600, /* посёлок ≤ villageMaxPop (5000) — по радиусу */ ringMinR: 2500, tangleDeg: 22, feederLen: 300, hwCellPenalty: 40, // A1 ширины полотна; A7 кольцо от радиуса города, порог «сплетения»; A4 длина проспекта-подводки к шоссе; A3/A5 штраф клеток у шоссе // USER_FEEDBACK_2 A2/A6: порог достраивания тупика (м), мин. длина изолированного проспекта (м)
     parallelMin: { lane: 40, street: 56, avenue: 80, highway: 200 },
     junctionSpacing: { lane: 30, street: 50, avenue: 120 },
     minAngleDeg: { lane: 30, street: 35, avenue: 45, highway: 75 },
@@ -653,7 +653,7 @@ export const BALANCE: BalanceConstants = {
     deadEndMax: 300,
     accessDist: 24,
     freightMaxGrade: 0.06,
-    highway: { junctionStep: 600, rampMargin: 30, maxCrossPerPair: 2, roadCellPenalty: 6, segLen: 40, diamond: true, diamondOff: 70 },
+    highway: { gateK: 0.55, coreK: 0.5, corePenalty: 0, gateAvBonus: 0, junctionStep: 600, rampMargin: 30, maxCrossPerPair: 2, roadCellPenalty: 6, segLen: 40, diamond: true, diamondOff: 70 },
     lots: {
       lane: { depthTiles: 2, maxLevelShare: 0.4, comDemandMult: 0.8 },
       street: { depthTiles: 2, maxLevelShare: 1, comDemandMult: 1 },
@@ -728,7 +728,7 @@ export const BALANCE: BalanceConstants = {
     oldVehicleBreakdownDaily: 0.01,
   },
   themes: { quarterSize: 120, coreRadius: 1200, coreEpoch: 15, ringEpoch: [10, 40], lateEpoch: 40, mixShare: 0.2, floorStep: 1 },
-  render: { busStopScale: 3, signalScale: 2.2, signalLampK: 2.2, lampDotNear: 0.9, grassNightDim: 0.85, farRoadDark: 0.3, terrainBlurFar: 3, terrainFarFlatten: 0.55, nightRoadEmissive: 0x39424f /* QA3 №11: светофоры заметнее */, busStopPoleH: 13, busStopSign: 6, roadFirstM: 700, roadFirstOps: 3, chunkOpsPerFrame: 2, chunkMsPerFrame: 4, farLots: true, lodNear: 1300, lodMid: 2400, lodHyst: 150 },
+  render: { busStopScale: 3, signalScale: 3, signalLampK: 2.6, lampDotNear: 0.9, grassNightDim: 0.85, farRoadDark: 0.3, terrainBlurFar: 3, terrainFarFlatten: 0.55, nightRoadEmissive: 0x39424f /* QA3 №11: светофоры заметнее */, busStopPoleH: 13, busStopSign: 6, roadFirstM: 700, roadFirstOps: 3, tramBedW: 3.4, tramBedWBallast: 6.6, nightWaterK: 0.12, nightFarColor: 0x1f3d3f, nightFarTint: 0.9, tramBedColor: 0x8c3b26, chunkOpsPerFrame: 2, chunkMsPerFrame: 4, farLots: true, lodNear: 1300, lodMid: 2400, lodHyst: 150 },
   lines: {
     stopSpacingMin: [250, 250, 600, 1500],
     stopSpacingMax: [800, 800, 2000, 15000],

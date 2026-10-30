@@ -165,7 +165,7 @@ export class Renderer {
       this.vehMeshes.push(m); this.scene.add(m);
     });
     // D (v5, NIGHT_SPEC): ночь, в которой можно строить — подъём альбедо / «ночное видение» слоёв на основных материалах, фары машин, bloom
-    for (const m of [this.terrainMat, this.roadMat, this.bldMat, vehMat] as THREE.Material[]) patchNight(m);
+    for (const m of [this.terrainMat, this.ovMat, this.skirtMat, this.roadMat, this.bldMat, vehMat] as THREE.Material[]) patchNight(m);
     this.carLights = new CarLightSet(caps[0] + caps[1]); for (const o of [this.carLights.head, this.carLights.tail, this.carLights.beam]) { o.geometry.rotateY(Math.PI / 2); o.geometry.translate(0, 0.15, 0); } this.scene.add(this.carLights.group);
     try { this.nightComp = createNightComposer(this.renderer, this.scene, this.cam); } catch { this.nightComp = null; }
     const lg = new THREE.BoxGeometry(1, 0.06, 0.45);
@@ -631,7 +631,7 @@ export class Renderer {
   }
   refreshAll() { for (const ch of this.chunks.values()) { this.world.dirtyTerrain.add(ch.id); this.world.dirtyRoads.add(ch.id); } this.buildOverview(); }
   refreshRoads() { for (const ch of this.chunks.values()) this.world.dirtyRoads.add(ch.id); }
-  farEdges = -1; farBase = groundUniforms.uFar.value.clone(); farTint0 = groundUniforms.uFarTint.value;
+  fogDay: THREE.Color | null = null; farEdges = -1; farBase = groundUniforms.uFar.value.clone(); farTint0 = groundUniforms.uFarTint.value;
   updateChunks() {
     const w = this.world; const cs = CHUNK * TILE; const tx = this.ctl.tx, tz = this.ctl.tz;
     const vd = Math.min(this.q.viewDist, Math.max(3000, this.ctl.dist * 3)); // этап A: дальше видно участки
@@ -669,7 +669,8 @@ export class Renderer {
     const n = this.night.value, d = this.ctl.dist; const NB = BALANCE.render as any;
     this.vision += ((this.overlay !== 'none' ? 1 : 0) - this.vision) * 0.2; nightUniforms.uVision.value = this.vision * Math.max(n, NB.visionDay ?? 0);
     nightUniforms.uLift.value *= 1; if (n > 0.5) setNightDistance(this.rig, d); else nightUniforms.uLift.value = 0;
-    this.nightComp?.setDist(d);
+    this.nightComp?.setDist(d); { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; // QA4 п.3: даль ночью — тёмно-сине-зелёная, без чёрной дыры
+      if (!this.fogDay) this.fogDay = groundUniforms.uFogCol.value.clone(); if (on > 0) { groundUniforms.uFogCol.value.copy(this.fogDay).lerp(new THREE.Color(RB.nightFarColor), on); groundUniforms.uFarTint.value = this.farTint0 + (RB.nightFarTint - this.farTint0) * on; } else { groundUniforms.uFogCol.value.copy(this.fogDay); groundUniforms.uFarTint.value = this.farTint0; } } if (this.waterMat) this.waterMat.uniforms.uNW.value = THREE.MathUtils.smoothstep(n, 0.2, 0.7);
     { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; /* QA3 №12/Степан: асфальт ночью светлее и холоднее земли, разметка читается */
       for (const [m, k] of [[this.roadMat, 1], [this.farMat, 1], [this.bridgeMat, 0.7], [this.marksMat, 1.6]] as [any, number][]) if (m && m.emissive) m.emissive.setHex(RB.nightRoadEmissive).multiplyScalar(on * k); }
     if (this.grassMat) { const gm = this.grassMat.uniforms as any; const k = 1 - BALANCE.render.grassNightDim * THREE.MathUtils.smoothstep(n, 0.2, 0.7); /* QA3: трава без освещения ночью «светилась» белыми крапинками */
@@ -722,9 +723,10 @@ export class Renderer {
       const sd = sh[k]; const narrow = sd < 70 ? 1 : 0; const v = narrow * 0.9 * Math.min(1, sd / 12);
       d[o] = tx * v; d[o + 1] = tz * v; d[o + 2] = Math.max(0, -w.tileH(i, j)); d[o + 3] = sd - TILE * 0.5; }
     const tex = new THREE.DataTexture(d, N, N, THREE.RGBAFormat, THREE.FloatType); tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
-    const m = createWaterMaterial(); m.uniforms.uField = { value: tex }; m.uniforms.uM = { value: w.M }; m.depthWrite = false;
+    const m = createWaterMaterial(); m.uniforms.uField = { value: tex }; m.uniforms.uM = { value: w.M }; m.depthWrite = false; m.uniforms.uNW = { value: 0 }; m.uniforms.uWN = { value: BALANCE.render.nightWaterK }; // QA4 п.3: вода ночью темнее
     m.vertexShader = m.vertexShader.replace('attribute vec2 flow; attribute float depth; attribute float shore; varying vec2 vF; varying float vD, vS; varying vec3 vW;', 'varying vec3 vW;').replace('vF = flow; vD = depth; vS = shore; ', '');
     m.fragmentShader = m.fragmentShader.replace('varying vec2 vF; varying float vD, vS; varying vec3 vW;', 'uniform sampler2D uField; uniform float uM; varying vec3 vW; vec2 vF; float vD, vS;')
+      .replace('gl_FragColor = vec4(col,', 'col *= mix(1., uWN, uNW); gl_FragColor = vec4(col,').replace('uniform sampler2D uField;', 'uniform sampler2D uField; uniform float uNW, uWN;')
       .replace('void main(){', 'void main(){ vec4 fld = texture2D(uField, vW.xz / uM); vF = fld.xy; vD = max(fld.z, 0.5); vS = max(fld.w, 0.); if (vW.x < 0. || vW.z < 0. || vW.x > uM || vW.z > uM) { vF = vec2(0.); vD = 6.; vS = 50.; }');
     this.waterMat = m; return m;
   }
