@@ -126,7 +126,7 @@ export class UI {
     while (this.notes.children.length > 3) this.notes.lastElementChild!.remove();
     setTimeout(() => { n.style.transition = 'opacity .5s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 550); }, 6000);
   }
-  open(p: string, fromUser = true) { if (fromUser && this.panel !== p) this.panelMin = false; this.panel = this.panel === p ? '' : p; this.top.querySelectorAll('button[data-p]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.p === this.panel))); this.right.style.display = this.panel ? 'block' : 'none'; this.layers.classList.toggle('shift', !!this.panel); this.notes.classList.toggle('shift', !!this.panel); this.renderPanel(true); }
+  open(p: string, fromUser = true) { if (fromUser && this.panel !== p) this.panelMin = p === "transport"; /* QA5 п.4: Транспорт открывается свёрнутым */ this.panel = this.panel === p ? '' : p; this.top.querySelectorAll('button[data-p]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.p === this.panel))); this.right.style.display = this.panel ? 'block' : 'none'; this.layers.classList.toggle('shift', !!this.panel); this.notes.classList.toggle('shift', !!this.panel); this.renderPanel(true); }
   frame() {
     const now = performance.now();
     this.hint.style.display = now - this.hintSetT < 200 ? 'block' : 'none'; this.hint.textContent = this.hintS;

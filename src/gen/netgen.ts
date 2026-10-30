@@ -110,11 +110,32 @@ export function qa4Fix(net: RoadNet): { acute: number; shortAv: number } {
     while (st.length) { const x = st.pop()!; chain.push(x); len += net.edges[x].len; for (const nn of [net.edges[x].a, net.edges[x].b]) for (const f of net.nodes[nn].edges) { const F = net.edges[f]; if (F.alive && F.type === 2) hwT = true; if (F.alive && F.type === 1 && !seen.has(f)) { seen.add(f); st.push(f); } } }
     if (hwT) { const hwN = [...new Set(chain.flatMap(x => [net.edges[x].a, net.edges[x].b]))].filter(m => net.nodes[m].edges.some(f => net.edges[f].alive && net.edges[f].type === 2)); // QA4 (затор s7 6400,5400): проспект от шоссе продлеваем по прямой улицами до hwFeedAvM, обрываясь только в перекрёстке (≥3 рёбер)
       const ends = new Map<number, number>(); for (const x of chain) for (const nn of [net.edges[x].a, net.edges[x].b]) ends.set(nn, (ends.get(nn) || 0) + 1);
-      for (const [n0, c] of ends) { if (c !== 1 || net.nodes[n0].edges.some(f => net.edges[f].alive && net.edges[f].type === 2)) continue; let n = n0, prevE = chain.find(x => net.edges[x].a === n0 || net.edges[x].b === n0)!; let L = Math.min(len, ...hwN.map(m => Math.hypot(net.nodes[m].x - net.nodes[n0].x, net.nodes[m].z - net.nodes[n0].z))); const path: number[] = [];
-        for (let it = 0; it < 40; it++) { if (L >= (T.hwFeedAvM ?? 500) && al(n).length >= 3) break; const a0 = ang(n, prevE) + Math.PI; let best = -1, bd = 100 * Math.PI / 180; for (const f of al(n)) { if (f === prevE || net.edges[f].type !== 0 || (net.edges[f].lv || 0) !== 0) continue; { const o = net.edges[f].a === n ? net.edges[f].b : net.edges[f].a; if (al(o).length === 1) continue; } let d = Math.abs(ang(n, f) - a0) % (2 * Math.PI); d = Math.min(d, 2 * Math.PI - d); if (d < bd) { bd = d; best = f; } }
-          if (best < 0) { path.length = 0; break; } path.push(best); L += net.edges[best].len; prevE = best; n = net.edges[best].a === n ? net.edges[best].b : net.edges[best].a; if (al(n).length === 1) { path.length = 0; break; } }
+      for (const [n0, c] of ends) { if (c !== 1 || net.nodes[n0].edges.some(f => net.edges[f].alive && net.edges[f].type === 2)) continue; let n = n0, prevE = chain.find(x => net.edges[x].a === n0 || net.edges[x].b === n0)!; const L0 = Math.min(len, ...hwN.map(m => Math.hypot(net.nodes[m].x - net.nodes[n0].x, net.nodes[m].z - net.nodes[n0].z))), pe0 = prevE; let L = L0; const path: number[] = [];
+        for (const [tb, tgt] of [[100, T.hwFeedAvM ?? 500], [150, minL]] /* QA5 п.7: запасной проход — поворот до 150°, цель minL */) { if (path.length && al(n).length >= 3) break; n = n0; prevE = pe0; L = L0; path.length = 0;
+        for (let it = 0; it < 40; it++) { if (L >= tgt && al(n).length >= 3) break; const a0 = ang(n, prevE) + Math.PI; let best = -1, bd = tb * Math.PI / 180; for (const f of al(n)) { if (f === prevE || net.edges[f].type !== 0 || (net.edges[f].lv || 0) !== 0) continue; { const o = net.edges[f].a === n ? net.edges[f].b : net.edges[f].a; if (al(o).length === 1) continue; } let d = Math.abs(ang(n, f) - a0) % (2 * Math.PI); d = Math.min(d, 2 * Math.PI - d); if (d < bd) { bd = d; best = f; } }
+          if (best < 0) { path.length = 0; break; } path.push(best); L += net.edges[best].len; prevE = best; n = net.edges[best].a === n ? net.edges[best].b : net.edges[best].a; if (al(n).length === 1) { path.length = 0; break; } } }
         if (path.length && al(n).length >= 3) { for (const f of path) net.edges[f].type = 1; shortAv += path.length; len += L; } } }
     if (len < minL && !hwT) for (const x of chain) { net.edges[x].type = 0; shortAv++; } }
+  // QA5 п.10: «петля-тупик» — цепочка улиц через узлы степени 2, возвращающаяся в свой же узел (< loopMaxM); убираем её и оставшийся хвост
+  const lpM = T.loopMaxM ?? 700;
+  for (let n = 0; n < net.nodes.length; n++) { if (!net.nodes[n].alive) continue;
+    for (const e0 of al(n)) { if (!net.edges[e0].alive || net.edges[e0].type !== 0) continue; const path = [e0]; let L = net.edges[e0].len, prev = e0, m = net.edges[e0].a === n ? net.edges[e0].b : net.edges[e0].a, ok = false;
+      for (let it = 0; it < 30 && L < lpM; it++) { if (m === n) { ok = true; break; } const r = al(m); if (r.length !== 2) break; const f = r.find(x => x !== prev)!; if (net.edges[f].type !== 0) break; path.push(f); L += net.edges[f].len; prev = f; m = net.edges[f].a === m ? net.edges[f].b : net.edges[f].a; }
+      if (!ok && m === n && L < lpM) ok = true;
+      if (!ok || path.length < 2) continue; for (const f of path) net.removeEdge(f); acute++;
+      let t = n; for (let it = 0; it < 30; it++) { const r = al(t); if (r.length !== 1 || net.edges[r[0]].type !== 0) break; const f = r[0]; t = net.edges[f].a === t ? net.edges[f].b : net.edges[f].a; net.removeEdge(f); }
+      break; } }
+  // QA5 п.5: острая вилка шоссе×шоссе (< hwAcuteDeg) — разводим обе ветви плавным поворотом вокруг узла (сходит на нет к hwForkSpreadM)
+  { const D0 = T.hwForkSpreadM ?? 450;
+    for (let n = 0; n < net.nodes.length; n++) { if (!net.nodes[n].alive) continue; const hs = al(n); if (!hs.some(e => net.edges[e].type === 2) || hs.length < 2) continue;
+      for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) { const a1 = ang(n, hs[i]), a2 = ang(n, hs[j]); let d = a2 - a1; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; if (Math.abs(d) >= lim) continue; const t1 = net.edges[hs[i]].type, t2 = net.edges[hs[j]].type; if (t1 !== 2 && t2 !== 2) continue;
+        const dl = (lim - Math.abs(d) + 2 * Math.PI / 180) / 2, sg = d >= 0 ? 1 : -1; const N0 = net.nodes[n];
+        for (const [e0, s0] of (t1 === 2 && t2 === 2 ? [[hs[i], -sg], [hs[j], sg]] : t1 === 2 ? [[hs[j], 2 * sg]] : [[hs[i], -2 * sg]])) { const ty = net.edges[e0].type; const ch: [number, number][] = []; let prev = e0, m = net.edges[e0].a === n ? net.edges[e0].b : net.edges[e0].a, L = 0;
+          while (true) { L += net.edges[prev].len; const r = al(m); if (L >= D0 || r.length !== 2 || r.some(x => net.edges[x].type !== ty) || m === n) break; ch.push([m, L]); prev = r.find(x => x !== prev)!; m = net.edges[prev].a === m ? net.edges[prev].b : net.edges[prev].a; }
+          if (!ch.length && ty !== 2 && net.edges[e0].alive && net.edges[e0].len > 90) { const an = ang(n, e0) + s0 * dl, R = T.hwForkSplitM ?? 40; net.splitEdge(e0, N0.x + Math.cos(an) * R, N0.z + Math.sin(an) * R); continue; } /* короткая ветвь до перекрёстка: новый узел на R м по развёрнутому направлению */ const Lc = Math.max(L, 1); const moved = new Set<number>();
+          for (const [k, dk] of ch) { const th = s0 * dl * (1 - dk / Lc), P = net.nodes[k], x = P.x - N0.x, z = P.z - N0.z, c = Math.cos(th), sn = Math.sin(th); P.x = N0.x + x * c - z * sn; P.z = N0.z + x * sn + z * c; moved.add(k); }
+          for (const k of [...moved, n]) for (const f of net.nodes[k].edges) { const F = net.edges[f]; if (F.alive) F.len = Math.hypot(net.nodes[F.a].x - net.nodes[F.b].x, net.nodes[F.a].z - net.nodes[F.b].z); } }
+        acute++; } } }
   return { acute, shortAv };
 }
 export function tidyNetwork(net: RoadNet, W: number[]): { dup: number; dead: number; shortAv: number; tangle: number; feeder: number } {

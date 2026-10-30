@@ -27,6 +27,7 @@ export class Game {
     if (snapshot?.arch) world.arch = snapshot.arch; if (snapshot?.quarters) world.quarters = new Map(snapshot.quarters);
     this.r = new Renderer(world, document.getElementById('c') as HTMLCanvasElement);
     this.traffic = new Traffic(world); this.transit = new Transit(world, this.traffic);
+    { const net = world.net; if (!net.nodes.some(n => n.alive && n.ctl)) { let k = 0; for (let i = 0; i < net.nodes.length; i++) if (net.nodes[i].alive && this.traffic.nodeMode(i) === 1) { net.nodes[i].ctl = 1; k++; } if (k) net.version++; } } // QA5 п.1: базовые светофоры записаны в узел (ctl=1), инструмент меняет режим
     this.eco = new Economy(world, this.traffic, this.transit);
     this.r.edgeLoad = e => this.traffic.edgeLoad(e);
     this.tools = new Tools(this);
@@ -121,17 +122,17 @@ export class Game {
     // traffic lights near camera
     const L = r.lightMesh; let n = 0;
     const P = r.signalPoles; let np = 0;
-    if (r.ctl.dist < SIGNAL.lodDist) { // светофоры: модели дизайнера (столб + линза), FIX_VISUALS §1
-      const net = w.net; const cx = r.ctl.tx, cz = r.ctl.tz; const RR = 320; const tt = performance.now() / 1000;
+    const sigLod = BALANCE.render.signalLodDist, kd = SIGNAL.lodDist / sigLod; if (r.ctl.dist < sigLod) { // QA5 п.1: светофоры видны с игровой дистанции // светофоры: модели дизайнера (столб + линза), FIX_VISUALS §1
+      const net = w.net; const cx = r.ctl.tx, cz = r.ctl.tz; const RR = Math.max(320, r.ctl.dist * 0.9); const tt = performance.now() / 1000;
       for (let a = Math.floor((cx - RR) / 64); a <= Math.floor((cx + RR) / 64); a++) for (let b = Math.floor((cz - RR) / 64); b <= Math.floor((cz + RR) / 64); b++) {
         const cell = net.nodeGrid.get(a * 131072 + b); if (!cell) continue;
         for (const id of cell) { const N0 = net.nodes[id]; if (!N0.alive || N0.edges.length < 3 || this.traffic.nodeMode(id) !== 1) continue; // C: светофор только в режиме «светофор»
           const app: Approach[] = []; for (const e of N0.edges) { const E = net.edges[e]; const oi = E.a === id ? E.b : E.a; const o = net.nodes[oi]; if (!E.alive || !o.alive) continue; app.push({ e, dx: (o.x - N0.x) / E.len, dz: (o.z - N0.z) / E.len, type: E.type, len: E.len, alive: true }); }
           const cd = Math.hypot(N0.x - r.cam.position.x, N0.z - r.cam.position.z);
-          for (const sp of placeSignals(N0.x, N0.z, app, Math.min(cd, r.ctl.dist))) { if (np >= 1200) break;
+          for (const sp of placeSignals(N0.x, N0.z, app, Math.min(cd, r.ctl.dist) * kd)) { if (np >= 1200) break;
             const y = w.roadY(sp.x, sp.z); d.position.set(sp.x, y, sp.z); d.rotation.set(0, sp.rot, 0); d.scale.setScalar(sp.scale * BALANCE.render.signalScale); d.updateMatrix(); P.setMatrixAt(np, d.matrix);
             const st = signalState(sp.group, id, tt, this.traffic.green(id, sp.e)); const lp = SIGNAL_LAMPS[st]; const sk = sp.scale * BALANCE.render.signalScale;
-            d.position.set(sp.x + (Math.sin(sp.rot) * lp[2] + Math.cos(sp.rot) * lp[0]) * sk, y + lp[1] * sk, sp.z + (Math.cos(sp.rot) * lp[2] - Math.sin(sp.rot) * lp[0]) * sk); d.scale.setScalar(sk * BALANCE.render.signalLampK); d.updateMatrix(); L.setMatrixAt(np, d.matrix); L.setColorAt(np, this.col.setHex(SIGNAL_STATE_COLOR[st])); np++; n++; }
+            d.position.set(sp.x + (Math.sin(sp.rot) * lp[2] + Math.cos(sp.rot) * lp[0]) * sk, y + lp[1] * sk, sp.z + (Math.cos(sp.rot) * lp[2] - Math.sin(sp.rot) * lp[0]) * sk); d.scale.setScalar(sk * BALANCE.render.signalLampK * Math.min(BALANCE.render.signalFarBoostMax, 1 + Math.max(0, r.ctl.dist - 150) / 150)); /* QA5 п.1: линзы крупнее издали */ d.updateMatrix(); L.setMatrixAt(np, d.matrix); L.setColorAt(np, this.col.setHex(SIGNAL_STATE_COLOR[st])); np++; n++; }
         }
       }
       d.scale.set(1, 1, 1);

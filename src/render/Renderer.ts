@@ -436,7 +436,7 @@ export class Renderer {
         }
         // лес — только вне городов
         if (detail >= 2 && w.resource[k] === RES.FOREST && !w.cityOf[k] && !w.road[k] && !w.zone[k] && w.tileH(i, j) > 1) {
-          for (let t = 0; t < 2; t++) { const tx = x + (hash2(i, j, 10 + t) - 0.5) * 12, tz = z + (hash2(i, j, 20 + t) - 0.5) * 12; const sc = 3 + hash2(i, j, 30 + t) * 3; trees.push([tx, w.hAt(tx, tz) - 0.5, tz, sc, sc * 2.6, sc, 0, 0x2f6e4a]); }
+          for (let t = 0; t < 2; t++) { const tx = x + (hash2(i, j, 10 + t) - 0.5) * 12, tz = z + (hash2(i, j, 20 + t) - 0.5) * 12; const sc = 3 + hash2(i, j, 30 + t) * 3; /* QA5 п.9: реже и вперемешку — хвойные, лиственные, кусты */ const RF = BALANCE.render, hk = hash2(i, j, 40 + t); if (hk > RF.forestKeep) continue; const hm = hash2(i, j, 50 + t); if (hm < RF.forestConifer) trees.push([tx, w.hAt(tx, tz) - 0.5, tz, sc, sc * 2.6, sc, 0, 0x2f6e4a]); else if (hm < 1 - RF.forestBush) { const s2 = 2 + sc * 0.4; trees.push([tx, w.hAt(tx, tz) - 0.3, tz, s2, s2 * 2.4, s2, 0, 0x5ea845]); } else trees.push([tx, w.hAt(tx, tz) - 0.2, tz, 1.4, 1.2, 1.4, 0, 0x5a8f45]); }
         }
         continue;
       }
@@ -669,7 +669,7 @@ export class Renderer {
     const n = this.night.value, d = this.ctl.dist; const NB = BALANCE.render as any;
     this.vision += ((this.overlay !== 'none' ? 1 : 0) - this.vision) * 0.2; nightUniforms.uVision.value = this.vision * Math.max(n, NB.visionDay ?? 0);
     nightUniforms.uLift.value *= 1; if (n > 0.5) setNightDistance(this.rig, d); else nightUniforms.uLift.value = 0;
-    this.nightComp?.setDist(d); { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; // QA4 п.3: даль ночью — тёмно-сине-зелёная, без чёрной дыры
+    this.nightComp?.setDist(d); if (n > 0.5 && this.overlay !== 'traffic') { const RB = BALANCE.render; this.hemi.color.setHex(RB.nightHemiSky); this.hemi.groundColor.setHex(RB.nightHemiGround); this.hemi.intensity = Math.max(this.hemi.intensity, RB.nightHemiMin); } /* QA5 п.2: тёмно-синий ambient ночью */ { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; // QA4 п.3: даль ночью — тёмно-сине-зелёная, без чёрной дыры
       if (!this.fogDay) this.fogDay = groundUniforms.uFogCol.value.clone(); if (on > 0) { groundUniforms.uFogCol.value.copy(this.fogDay).lerp(new THREE.Color(RB.nightFarColor), on); groundUniforms.uFarTint.value = this.farTint0 + (RB.nightFarTint - this.farTint0) * on; } else { groundUniforms.uFogCol.value.copy(this.fogDay); groundUniforms.uFarTint.value = this.farTint0; } } if (this.waterMat) this.waterMat.uniforms.uNW.value = THREE.MathUtils.smoothstep(n, 0.2, 0.7);
     { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; /* QA3 №12/Степан: асфальт ночью светлее и холоднее земли, разметка читается */
       for (const [m, k] of [[this.roadMat, 1], [this.farMat, 1], [this.bridgeMat, 0.7], [this.marksMat, 1.6]] as [any, number][]) if (m && m.emissive) m.emissive.setHex(RB.nightRoadEmissive).multiplyScalar(on * k); }
