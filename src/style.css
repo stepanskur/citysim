@@ -144,3 +144,7 @@ html.noblur .cs-glass,html.noblur .note,html.noblur #ui #eng-goal{background:rgb
 #eng-goal .t::after{content:" ▴";opacity:.6;font-size:11px}
 #eng-goal:not(.open) .t::after{content:" ▾"}
 #eng-goal:not(.open) > :not(.row):not(.t){display:none}
+/* QA6 п.8: подпанель инструмента — узкая, прижата к правому краю над доком, не закрывает центр карты */
+#toolsub{left:auto;right:12px;transform:none;max-width:300px;align-items:stretch}
+#toolsub .tip2{max-width:280px;text-align:left}
+#toolsub .cs-seg{justify-content:flex-start}

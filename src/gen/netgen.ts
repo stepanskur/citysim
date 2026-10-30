@@ -104,6 +104,12 @@ export function qa4Fix(net: RoadNet): { acute: number; shortAv: number } {
       const k = E.type < F.type || (E.type === F.type && E.len < F.len) ? e : f; const K = net.edges[k];
       const okEnd = (n: number) => { const r = al(n); if (r.length >= 3) return -1; if (r.length !== 2) return -2; const o = r.find(x => x !== k)!; const O = net.edges[o]; return O.type !== 2 && al(O.a === n ? O.b : O.a).length >= 3 ? o : -2; };
       const ka = okEnd(K.a), kb = okEnd(K.b); if (ka !== -2 && kb !== -2) { net.removeEdge(k); acute++; if (ka >= 0) net.removeEdge(ka); if (kb >= 0) net.removeEdge(kb); if (k === e) break; } } }
+  // QA6 п.6: короткие тупиковые отростки улиц/переулков (< deadStubM, через узлы степени 2) убираем — «тупики-кольца» без смысла
+  { const ds = T.deadStubM ?? 120; let nStub = 0;
+    for (let n = 0; n < net.nodes.length; n++) { if (!net.nodes[n].alive || al(n).length !== 1) continue; const path: number[] = []; let m = n, prev = -1, L = 0, ok = false;
+      for (let it = 0; it < 10; it++) { const r = al(m).filter(x => x !== prev); if (r.length !== 1) { ok = al(m).length >= 3; break; } const f = r[0]; if (net.edges[f].type === 1 || net.edges[f].type === 2 || (net.edges[f].lv || 0) !== 0) break; path.push(f); L += net.edges[f].len; if (L > ds) break; prev = f; m = net.edges[f].a === m ? net.edges[f].b : net.edges[f].a; if (al(m).length >= 3) { ok = true; break; } }
+      if (ok && al(m).length < 4) ok = false; // только у перекрёстков ≥4 — иначе узел станет степени 2 со сменой класса
+      if (ok && L <= ds && path.length) { for (const f of path) net.removeEdge(f); acute++; nStub++; } } }
   unifyClasses(net); // после удалений: без смены класса в узлах степени 2
   const minL = T.regAvMinM ?? 400; const seen = new Set<number>();
   for (let e = 0; e < net.edges.length; e++) { const E = net.edges[e]; if (!E.alive || E.type !== 1 || seen.has(e)) continue; const chain: number[] = [], st = [e]; seen.add(e); let len = 0, hwT = false;

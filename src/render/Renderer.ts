@@ -30,6 +30,11 @@ function patchNight<T extends THREE.Material>(m: T): T {
   m.onBeforeCompile = (sh, r) => { prev?.call(m, sh, r); const keep = { ...sh.uniforms }; tmp.onBeforeCompile(sh, r); for (const k of Object.keys(nightUniforms)) if (k !== 'uLift' && k !== 'uVision') { if (k in keep) sh.uniforms[k] = keep[k]; else delete sh.uniforms[k]; } };
   const pk = m.customProgramCacheKey.bind(m); m.customProgramCacheKey = () => pk() + '|night'; return m;
 }
+/** QA6 п.3: ночной «пол» земли — тёмно-синий минимум яркости, растущий с дистанцией (не чёрная земля издали) */
+const NIGHT_BLUE = { value: new THREE.Vector4(0, 0, 0, 0) };
+function patchNightBlue<T extends THREE.Material>(m: T): T { const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => { prev?.call(m, sh, r); sh.uniforms.uNB = NIGHT_BLUE; sh.fragmentShader = 'uniform vec4 uNB;\n' + sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n  { float fz = clamp((gl_FragCoord.z / gl_FragCoord.w) / 6000.0, 0.0, 1.0); vec3 nb = uNB.rgb * uNB.a * (0.45 + 0.55 * fz); gl_FragColor.rgb = max(gl_FragColor.rgb, nb); }'); };
+  const pk = m.customProgramCacheKey.bind(m); m.customProgramCacheKey = () => pk() + '|nb'; return m; }
 function recolorJunction(g: THREE.BufferGeometry, mainType: number) {
   const ca = g.attributes.color as THREE.BufferAttribute; const tc = new THREE.Color(); const src = [ROAD_SPEC.color.pad, ...ROAD_SPEC.color.asphalt].map(h => new THREE.Color(h)); const dst = [ASPH[mainType], ...ASPH].map(h => new THREE.Color(h));
   for (let i = 0; i < ca.count; i++) { tc.setRGB(ca.getX(i), ca.getY(i), ca.getZ(i)); for (let k = 0; k < src.length; k++) if (Math.abs(tc.r - src[k].r) + Math.abs(tc.g - src[k].g) + Math.abs(tc.b - src[k].b) < 0.004) { ca.setXYZ(i, dst[k].r, dst[k].g, dst[k].b); break; } }
@@ -165,7 +170,7 @@ export class Renderer {
       this.vehMeshes.push(m); this.scene.add(m);
     });
     // D (v5, NIGHT_SPEC): ночь, в которой можно строить — подъём альбедо / «ночное видение» слоёв на основных материалах, фары машин, bloom
-    for (const m of [this.terrainMat, this.ovMat, this.skirtMat, this.roadMat, this.bldMat, vehMat] as THREE.Material[]) patchNight(m);
+    for (const m of [this.terrainMat, this.ovMat, this.skirtMat, this.roadMat, this.bldMat, vehMat] as THREE.Material[]) patchNight(m); for (const m of [this.terrainMat, this.ovMat, this.skirtMat] as THREE.Material[]) patchNightBlue(m);
     this.carLights = new CarLightSet(caps[0] + caps[1]); for (const o of [this.carLights.head, this.carLights.tail, this.carLights.beam]) { o.geometry.rotateY(Math.PI / 2); o.geometry.translate(0, 0.15, 0); } this.scene.add(this.carLights.group);
     try { this.nightComp = createNightComposer(this.renderer, this.scene, this.cam); } catch { this.nightComp = null; }
     const lg = new THREE.BoxGeometry(1, 0.06, 0.45);
@@ -436,7 +441,7 @@ export class Renderer {
         }
         // лес — только вне городов
         if (detail >= 2 && w.resource[k] === RES.FOREST && !w.cityOf[k] && !w.road[k] && !w.zone[k] && w.tileH(i, j) > 1) {
-          for (let t = 0; t < 2; t++) { const tx = x + (hash2(i, j, 10 + t) - 0.5) * 12, tz = z + (hash2(i, j, 20 + t) - 0.5) * 12; const sc = 3 + hash2(i, j, 30 + t) * 3; /* QA5 п.9: реже и вперемешку — хвойные, лиственные, кусты */ const RF = BALANCE.render, hk = hash2(i, j, 40 + t); if (hk > RF.forestKeep) continue; const hm = hash2(i, j, 50 + t); if (hm < RF.forestConifer) trees.push([tx, w.hAt(tx, tz) - 0.5, tz, sc, sc * 2.6, sc, 0, 0x2f6e4a]); else if (hm < 1 - RF.forestBush) { const s2 = 2 + sc * 0.4; trees.push([tx, w.hAt(tx, tz) - 0.3, tz, s2, s2 * 2.4, s2, 0, 0x5ea845]); } else trees.push([tx, w.hAt(tx, tz) - 0.2, tz, 1.4, 1.2, 1.4, 0, 0x5a8f45]); }
+          for (let t = 0; t < 2; t++) { const tx = x + (hash2(i, j, 10 + t) - 0.5) * 12, tz = z + (hash2(i, j, 20 + t) - 0.5) * 12; const sc = 3 + hash2(i, j, 30 + t) * 3; /* QA5 п.9: реже и вперемешку — хвойные, лиственные, кусты */ const RF = BALANCE.render, hk = hash2(i, j, 40 + t); if (hk > RF.forestKeep || !w.treeFree(tx, tz)) continue; const hm = hash2(i, j, 50 + t); if (hm < RF.forestConifer) trees.push([tx, w.hAt(tx, tz) - 0.5, tz, sc, sc * 2.6, sc, 0, 0x2f6e4a]); else if (hm < 1 - RF.forestBush) { const s2 = 2 + sc * 0.4; trees.push([tx, w.hAt(tx, tz) - 0.3, tz, s2, s2 * 2.4, s2, 0, 0x5ea845]); } else trees.push([tx, w.hAt(tx, tz) - 0.2, tz, 1.4, 1.2, 1.4, 0, 0x5a8f45]); }
         }
         continue;
       }
@@ -465,6 +470,7 @@ export class Renderer {
             else if (it.kind === 'fountain') boxes.push([ix, yy, iz, 3, 0.9, 3, 0, 0xbfd8e0]);
             else if (it.kind === 'bench') boxes.push([ix, yy, iz, 1.6, 0.7, 0.5, rot, 0x8a6a4a]);
             else if (it.kind === 'bins') boxes.push([ix, yy, iz, 3, 1.2, 1.5, 0, 0x6a8a6a]);
+            else if ((it.kind === 'tree' || it.kind === 'bush') && !w.treeFree(ix, iz)) { /* QA6: просека */ }
             else if (it.kind === 'tree') { const s2 = 2 + hash2(ix | 0, iz | 0, 5) * 1.5; trees.push([ix, yy, iz, s2, s2 * 2.4, s2, 0, pick([0x5ea845, 0x4c9a48, 0x77b84e], hash2(ix | 0, iz | 0, 6))]); }
             else if (it.kind === 'bush') trees.push([ix, yy, iz, 1.2, 1.1, 1.2, 0, 0x5a8f45]);
           }
@@ -671,6 +677,7 @@ export class Renderer {
     nightUniforms.uLift.value *= 1; if (n > 0.5) setNightDistance(this.rig, d); else nightUniforms.uLift.value = 0;
     this.nightComp?.setDist(d); if (n > 0.5 && this.overlay !== 'traffic') { const RB = BALANCE.render; this.hemi.color.setHex(RB.nightHemiSky); this.hemi.groundColor.setHex(RB.nightHemiGround); this.hemi.intensity = Math.max(this.hemi.intensity, RB.nightHemiMin); } /* QA5 п.2: тёмно-синий ambient ночью */ { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; // QA4 п.3: даль ночью — тёмно-сине-зелёная, без чёрной дыры
       if (!this.fogDay) this.fogDay = groundUniforms.uFogCol.value.clone(); if (on > 0) { groundUniforms.uFogCol.value.copy(this.fogDay).lerp(new THREE.Color(RB.nightFarColor), on); groundUniforms.uFarTint.value = this.farTint0 + (RB.nightFarTint - this.farTint0) * on; } else { groundUniforms.uFogCol.value.copy(this.fogDay); groundUniforms.uFarTint.value = this.farTint0; } } if (this.waterMat) this.waterMat.uniforms.uNW.value = THREE.MathUtils.smoothstep(n, 0.2, 0.7);
+    { const RB = BALANCE.render; const c = new THREE.Color(RB.nightGroundBlue); NIGHT_BLUE.value.set(c.r, c.g, c.b, this.overlay === 'traffic' ? 0 : THREE.MathUtils.smoothstep(n, 0.3, 0.8)); } /* QA6 п.3 */
     { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; /* QA3 №12/Степан: асфальт ночью светлее и холоднее земли, разметка читается */
       for (const [m, k] of [[this.roadMat, 1], [this.farMat, 1], [this.bridgeMat, 0.7], [this.marksMat, 1.6]] as [any, number][]) if (m && m.emissive) m.emissive.setHex(RB.nightRoadEmissive).multiplyScalar(on * k); }
     if (this.grassMat) { const gm = this.grassMat.uniforms as any; const k = 1 - BALANCE.render.grassNightDim * THREE.MathUtils.smoothstep(n, 0.2, 0.7); /* QA3: трава без освещения ночью «светилась» белыми крапинками */
@@ -742,7 +749,7 @@ export class Renderer {
       this.bush = new THREE.InstancedMesh(createBushGeometry(), this.bushMat, BUSH.maxInst); this.bush.frustumCulled = false; this.bush.count = 0; this.bush.castShadow = true; this.bush.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(BUSH.maxInst * 3), 3); this.scene.add(this.bush); }
     this.grass!.visible = on && d < 260; this.bush!.visible = on; if (!on) return;
     tickGround(this.grassMat, this.bushMat!, performance.now() / 1000, this.cam.position);
-    const ver = this.world.net.version + this.bldVer();
+    const ver = this.world.net.version + this.bldVer() + this.world.railVer * 7919;
     if (Math.hypot(cx - this.grassAt.x, cz - this.grassAt.z) < 40 && ver === this.grassAt.b) return; this.grassAt = { x: cx, z: cz, b: ver };
     const R = GRASS.fade; const hAt = (x: number, z: number) => this.world.hAt(x, z);
     const ms = scatterGrass(Math.floor((cx - R) / 8) * 8, Math.floor((cz - R) / 8) * 8, R * 2, this.groundMask, hAt, 7 + Math.floor(cx / 8) * 31 + Math.floor(cz / 8));
@@ -750,7 +757,7 @@ export class Renderer {
     // кусты: джиттер-сетка по детерминированному хэшу клетки — не «прыгают» при пересеве
     const BR = 420, st = 9; let n = 0; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color(); const BC = GROUND_V5.bush as number[];
     for (let gz = Math.floor((cz - BR) / st); gz <= Math.floor((cz + BR) / st) && n < BUSH.maxInst; gz++) for (let gx = Math.floor((cx - BR) / st); gx <= Math.floor((cx + BR) / st) && n < BUSH.maxInst; gx++) {
-      const hv = hash2(gx, gz, 501); const x = (gx + hash2(gx, gz, 502)) * st, z = (gz + hash2(gx, gz, 503)) * st; const t = this.groundMask(x, z); if (!t || t === 'roadside') continue;
+      const hv = hash2(gx, gz, 501); const x = (gx + hash2(gx, gz, 502)) * st, z = (gz + hash2(gx, gz, 503)) * st; const t = this.groundMask(x, z); if (!t || t === 'roadside' || !this.world.treeFree(x, z)) continue;
       const dens = t === 'park' ? BUSH.density.park : t === 'yard' ? BUSH.density.yard : (this.world.resource[Math.floor(z / TILE) * this.world.N + Math.floor(x / TILE)] === RES.FOREST ? BUSH.density.forestEdge : BUSH.density.meadow); if (hv > dens * st * st) continue;
       const r = BUSH.r[0] + hash2(gx, gz, 504) * (BUSH.r[1] - BUSH.r[0]); q.setFromAxisAngle(up, hash2(gx, gz, 505) * 6.28); m4.compose(new THREE.Vector3(x, this.world.hAt(x, z) - 0.1, z), q, new THREE.Vector3(r, r, r)); this.bush!.setMatrixAt(n, m4);
       this.bush!.setColorAt(n, col.setHex(BC[Math.floor(hash2(gx, gz, 506) * BC.length) % BC.length])); n++; }

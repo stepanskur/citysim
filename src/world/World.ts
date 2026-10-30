@@ -2,6 +2,7 @@ import { RoadNet, ROAD_TYPES } from './RoadNet';
 import { TILE, CHUNK, SIZES, K, Z, markRoadTiles } from './consts';
 import type { WorldData, CityInfo } from '../gen/worldgen';
 import { lerp, clamp } from '../util';
+import { BALANCE } from '../sim/balance';
 import { Subregions } from './Subregions';
 
 /** этап C: высота эстакады (габарит 4.5–5 м + конструкция), глубина тоннеля, уклон рамп (≈ maxGrade улицы) */
@@ -91,9 +92,18 @@ export class World {
     this.railLift.clear(); const E = this.rail.edges[e]; const A = this.rail.nodes[E.a], B = this.rail.nodes[E.b];
     if (added && (E.lv || 0) === 0) this.forTilesAlong(A.x, A.z, B.x, B.z, 7, k => { if (this.bld[k] && this.kind[k] !== K.PORT && this.kind[k] !== K.STATION) this.setBld(k, 0, 0); this.zone[k] = 0; });
     const steps = Math.ceil(E.len / 64); for (let s = 0; s <= steps; s++) this.dirtyRoads.add(this.chunkOfPos(A.x + (B.x - A.x) * s / steps, A.z + (B.z - A.z) * s / steps));
+    if (added && (E.lv || 0) === 0) for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; this.markBld(Math.floor(x / TILE), Math.floor(z / TILE)); this.markBld(Math.floor((x + 40) / TILE), Math.floor(z / TILE)); this.markBld(Math.floor(x / TILE), Math.floor((z + 40) / TILE)); this.markBld(Math.floor((x - 40) / TILE), Math.floor(z / TILE)); this.markBld(Math.floor(x / TILE), Math.floor((z - 40) / TILE)); } /* QA6: перестроить деревья у пути */
     this.railVer++;
   }
   railVer = 0;
+  /** остановки/станции линий (заполняет game) */ stopPts: { x: number; z: number }[] = [];
+  /** QA6 п.1–2: деревья/кусты не ставим на наземных путях (полоса w/2 + treeClearM), на дорогах и у станций */
+  treeFree(x: number, z: number): boolean { const cl = BALANCE.render.treeClearM;
+    const segD = (net: RoadNet, e: number) => { const E = net.edges[e], A = net.nodes[E.a], B = net.nodes[E.b]; const vx = B.x - A.x, vz = B.z - A.z, l = vx * vx + vz * vz; const t = l ? Math.max(0, Math.min(1, ((x - A.x) * vx + (z - A.z) * vz) / l)) : 0; return Math.hypot(A.x + vx * t - x, A.z + vz * t - z); };
+    for (const e of this.rail.edgesNear(x, z, 20)) { const E = this.rail.edges[e]; if (!E.alive || (E.lv || 0) !== 0) continue; if (segD(this.rail, e) < RAIL_TYPES[E.type].w / 2 + cl) return false; }
+    for (const e of this.net.edgesNear(x, z, 24)) { const E = this.net.edges[e]; if (!E.alive || (E.lv || 0) > 0) continue; if (segD(this.net, e) < ROAD_TYPES[E.type].w / 2 + cl * 0.5) return false; }
+    const sr = BALANCE.render.treeClearStationM; for (const p of this.stopPts) if (Math.abs(p.x - x) < sr && Math.abs(p.z - z) < sr) return false;
+    return true; }
   hookRail() { this.rail.onEdgeAdded = e => this.railChanged(e, true); this.rail.onEdgeRemoved = e => this.railChanged(e, false); }
   edgeChanged(e: number, added: boolean) {
     this.liftCache.clear();

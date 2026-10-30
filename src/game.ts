@@ -90,7 +90,7 @@ export class Game {
     mark('misc'); if (this.frameN++ % 2 === 0) this.r.updateChunks(); mark('chunks');
     this.drawVehicles(); mark('veh');
     if (this.transit.version !== this.lineVer) { this.lineVer = this.transit.version; this.buildLineMeshes(); }
-    { const rv = this.world.railVer + ':' + this.transit.version + ':' + this.world.net.version; if (rv !== this.r.rail.ver && this.frameN % 10 === 0) { this.r.rail.ver = rv; this.r.rail.build(this.transit.lines); } } /* этап D: пути и станции Дезигнера */
+    { const rv = this.world.railVer + ':' + this.transit.version + ':' + this.world.net.version; if (rv !== this.r.rail.ver && this.frameN % 10 === 0) { this.r.rail.ver = rv; this.r.rail.build(this.transit.lines); /* QA6: деревья у новых остановок */ const w = this.world; const sp = this.transit.lines.flatMap(l => l.type >= 1 ? l.stops.map(s => ({ x: s.x, z: s.z })) : []); if (sp.length !== w.stopPts.length) { w.stopPts = sp; for (const p of sp) w.markBld(Math.floor(p.x / TILE), Math.floor(p.z / TILE)); (w as any).bldVer = ((w as any).bldVer || 0) + 1; } } } /* этап D: пути и станции Дезигнера */
     if (this.r.overlay === 'traffic' && this.frameN % 90 === 0) this.r.refreshRoads();
     this.r.render(); mark('render');
     this.ui.frame(); mark('ui');

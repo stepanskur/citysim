@@ -136,7 +136,7 @@ export class UI {
     (this.top.querySelector('#money') as HTMLElement).textContent = fmtMoney(e.money); (this.top.querySelector('#money') as HTMLElement).style.color = e.money < 0 ? 'var(--neg)' : 'var(--money)';
     const dl = this.top.querySelector('#delta') as HTMLElement; dl.textContent = (inc - exp >= 0 ? '+' : '') + fmtMoney(inc - exp) + '/день'; dl.className = 'cs-delta ' + (inc - exp >= 0 ? 'cs-delta--up' : 'cs-delta--down');
     (this.top.querySelector('#pop') as HTMLElement).textContent = fmtNum(e.cities.reduce((s, c) => s + c.pop, 0));
-    const hr = e.hour; (this.top.querySelector('#date') as HTMLElement).textContent = `День ${e.day}`; (this.top.querySelector('#clock') as HTMLElement).textContent = `${String(Math.floor(hr)).padStart(2, '0')}:${String(Math.floor((hr % 1) * 60)).padStart(2, '0')} · ${Math.round(g.fps)} FPS`;
+    const hr = g.autoTime ? e.hour : g.fixedHour; /* QA6 п.10: часы HUD = видимое время суток */ (this.top.querySelector('#date') as HTMLElement).textContent = `День ${e.day}`; (this.top.querySelector('#clock') as HTMLElement).textContent = `${String(Math.floor(hr)).padStart(2, '0')}:${String(Math.floor((hr % 1) * 60)).padStart(2, '0')} · ${Math.round(g.fps)} FPS`;
     if (this.panel) this.renderPanel(false);
     if (now - this.miniT > 3000) { this.miniT = now; this.drawMini(); } else this.drawMiniCam();
   }

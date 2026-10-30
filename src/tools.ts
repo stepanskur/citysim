@@ -70,7 +70,7 @@ export class Tools {
       case 'bulldoze': this.bulldoze(p); this.down = true; break;
       case 'terrain': if (!this.own(p)) break; this.down = true; this.levelH = g.world.hAt(p.x, p.z); break;
       case 'place': this.place(p); break;
-      case 'line': this.pts.push(p.clone()); break;
+      case 'line': { /* QA6 п.7: остановку ближе stopSpacingMin к предыдущей не ставим */ const mn = BALANCE.lines.stopSpacingMin[this.sub], q = this.pts[this.pts.length - 1]; const d = q ? Math.hypot(p.x - q.x, p.z - q.z) : 1e9; if (d < mn) { const m = `Остановка не добавлена: ${Math.round(d)} м до предыдущей, нужно ≥ ${mn} м`; this.g.ui.toast(m, 'bad'); this.g.ui.cursorHint('⛔ ' + m); break; } this.pts.push(p.clone()); break; }
       case 'traffic': this.trafficClick(p); break;
     }
   }
@@ -140,13 +140,19 @@ export class Tools {
     const mul = t === RAIL.METRO ? (lv > 0 ? 0.6 : 1) : lv > 0 ? RB.bridgeBase + RB.bridgePerM * 7 : lv < 0 ? RB.tunnelBase + RB.tunnelPerM * 10 : 1;
     return L * base * mul;
   }
+  /** QA6 п.1: причина запрета пути (null — можно строить); показывается у курсора в превью и после клика */
+  railWhy(a: THREE.Vector3, b: THREE.Vector3, t = this.sub): string | null {
+    const L = Math.hypot(b.x - a.x, b.z - a.z); if (L < 8) return 'слишком коротко (мин. 8 м)';
+    if (!this.own(a, true) || !this.own(b, true)) return 'не ваш подрегион';
+    const lv = this.railLv(t); const dl = lv === 0 ? this.demoList(a, b, 7, lv, true) : []; const cost = this.railCost(a, b, t) + this.demoCost(dl); if (this.g.eco.money < cost) return 'недостаточно средств: нужно ' + fmtMoney(cost);
+    if (lv === 0) for (let s = 0; s <= 20; s++) { const x = a.x + (b.x - a.x) * s / 20, z = a.z + (b.z - a.z) * s / 20; if (this.g.world.hAt(x, z) < 0.3) return 'вода на трассе — поднимите уровень (L)'; }
+    return null; }
   buildRail(a: THREE.Vector3, b: THREE.Vector3, t = this.sub, record = true): boolean {
-    const g = this.g; const L = Math.hypot(b.x - a.x, b.z - a.z); if (L < 8) return false;
-    if (!this.own(a) || !this.own(b)) return false;
+    const g = this.g; const L = Math.hypot(b.x - a.x, b.z - a.z); { const why = this.railWhy(a, b, t); if (why) { g.ui.toast('Путь не построен: ' + why, 'bad'); g.ui.cursorHint('⛔ ' + why); return false; } }
     const cost = this.railCost(a, b, t) + this.demoCost(this.demoList(a, b, 7, this.railLv(t), true)); if (g.eco.money < cost) { g.ui.toast('Недостаточно средств: нужно ' + fmtMoney(cost), 'bad'); return false; }
     const lv = this.railLv(t); const segs = Math.ceil(L / 200); let ok = 0;
     for (let s = 0; s < segs; s++) { const t0 = s / segs, t1 = (s + 1) / segs; ok += g.world.rail.addRoad(a.x + (b.x - a.x) * t0, a.z + (b.z - a.z) * t0, a.x + (b.x - a.x) * t1, a.z + (b.z - a.z) * t1, t, 12, -1, lv, 0).length; }
-    if (ok) { g.eco.spend(cost); if (record) g.log({ a: 'rail', p: [a.x, a.z, b.x, b.z], t, ...(lv ? { lv } : {}) }); }
+    if (ok) { g.eco.spend(cost); if (record) g.log({ a: 'rail', p: [a.x, a.z, b.x, b.z], t, ...(lv ? { lv } : {}) }); } else { g.ui.toast('Путь не построен: трасса пересекает несовместимый путь', 'bad'); g.ui.cursorHint('⛔ трасса пересекает несовместимый путь'); }
     return ok > 0;
   }
   /** необязательные поля команды (этап C), чтобы старые команды не менялись */
@@ -229,7 +235,8 @@ export class Tools {
   /** проверка владения подрегионом (08-expansion) */
   own(p: { x: number; z: number }, quiet = false) { const ok = this.g.world.canBuild(p.x, p.z); if (!ok && !quiet) this.g.ui.toast('Это не ваш подрегион: стройте на своей территории или выкупите участок (панель «Регион»)', 'bad'); return ok; }
   finishLine() {
-    const g = this.g; if (this.pts.length < 2) { g.ui.toast('Нужно минимум 2 остановки', 'bad'); return; }
+    const g = this.g; { const mn = BALANCE.lines.stopSpacingMin[this.sub]; const kept: THREE.Vector3[] = []; for (const p of this.pts) { const q = kept[kept.length - 1]; if (!q || Math.hypot(p.x - q.x, p.z - q.z) >= mn) kept.push(p); } if (kept.length < this.pts.length) g.ui.toast(`Убрано остановок ближе ${mn} м: ${this.pts.length - kept.length}`, 'bad'); this.pts = kept; } /* QA6 п.7 */
+    if (this.pts.length < 2) { g.ui.toast('Нужно минимум 2 остановки', 'bad'); return; }
     if (!this.pts.every(p => this.own(p, true))) { g.ui.toast('Все остановки должны быть в ваших подрегионах. Межрегиональные маршруты — панель «Маршруты»', 'bad'); return; }
     const stops = this.pts.map(p => ({ x: p.x, z: p.z })); const cost = g.transit.buildCost(this.sub, stops, this.sub >= 1);
     if (g.eco.money < cost) { g.ui.toast('Недостаточно средств: нужно ' + fmtMoney(cost), 'bad'); return; }
@@ -254,7 +261,7 @@ export class Tools {
     const ring = (p: THREE.Vector3, r: number, col: number) => { const m = new THREE.Mesh(new THREE.RingGeometry(r * 0.85, r, 32), this.mat(col, 0.8)); m.rotation.x = -Math.PI / 2; m.position.set(p.x, Math.max(p.y, 0) + 1.5, p.z); add(m); };
     if (this.tool === 'road') { const sp = this.snap(c); ring(sp, 10, 0x4fc3ff); if (this.pts.length) { const a = this.pts[0]; const cost = this.roadCost(a, sp, this.sub); const dl = this.demoList(a, sp, ROAD_TYPES[this.sub].w, this.lv); const dc = this.demoCost(dl); demo(dl); seg(a, sp, ROAD_TYPES[this.sub].w, this.g.eco.money >= cost + dc ? 0x4fc3ff : 0xff4040); this.g.ui.cursorHint(`${(a.distanceTo(sp)).toFixed(0)} м · ${fmtMoney(cost + dc)} · ${levelName(this.lv)}${dl.length ? ` · снос ${dl.length} зд.: ${fmtMoney(dc)}` : ''}`); } }
     else if (this.tool === 'curve') { const sp = this.snap(c); ring(sp, 10, 0x4fc3ff); const pts = [...this.pts, sp]; if (pts.length === 3) { const cv = this.curve(pts[0], pts[1], pts[2]); const rm = this.minRadius(); this.g.ui.cursorHint(`R мин ${isFinite(cv.rMin) ? cv.rMin.toFixed(0) : '∞'} м · норма ${rm} м${cv.rMin < rm * 0.5 ? ' — нельзя' : cv.rMin < rm ? ' — со снижением скорости' : ''} · ${levelName(this.lv)}`); } if (pts.length === 2) seg(pts[0], pts[1], 2, 0x999999); if (pts.length === 3) { const bz = this.bezier(pts[0], pts[1], pts[2]); for (let i = 1; i < bz.length; i++) seg(bz[i - 1], bz[i], ROAD_TYPES[this.sub].w, 0x4fc3ff); } }
-    else if (this.tool === 'rail') { const sp = this.snapRail(c); const col = [0x8a5cd0, 0xe04848, 0x3a8ee0][this.sub]; ring(sp, 10, col); if (this.pts.length) { const a = this.pts[0]; const cost = this.railCost(a, sp); const dl = this.demoList(a, sp, 7, this.railLv(), true); const dc = this.demoCost(dl); demo(dl); seg(a, sp, RAIL_TYPES[this.sub].w, this.g.eco.money >= cost + dc ? col : 0xff4040, this.railLv() < 0 ? 0.5 : this.railLv() > 0 ? 8 : 1); this.g.ui.cursorHint(`${a.distanceTo(sp).toFixed(0)} м · ${fmtMoney(cost + dc)} · ${levelName(this.railLv())}${dl.length ? ` · снос ${dl.length} зд.: ${fmtMoney(dc)}` : ''}`); } }
+    else if (this.tool === 'rail') { const sp = this.snapRail(c); const col = [0x8a5cd0, 0xe04848, 0x3a8ee0][this.sub]; ring(sp, 10, col); if (this.pts.length) { const a = this.pts[0]; const cost = this.railCost(a, sp); const dl = this.demoList(a, sp, 7, this.railLv(), true); const dc = this.demoCost(dl); demo(dl); const why = a.distanceTo(sp) < 8 ? null : this.railWhy(a, sp); seg(a, sp, RAIL_TYPES[this.sub].w, why ? 0xff4040 : 0x39d98a, this.railLv() < 0 ? 0.5 : this.railLv() > 0 ? 8 : 1); this.g.ui.cursorHint(`${a.distanceTo(sp).toFixed(0)} м · ${fmtMoney(cost + dc)} · ${levelName(this.railLv())}${dl.length ? ` · снос ${dl.length} зд.: ${fmtMoney(dc)}` : ''}${why ? ` · ⛔ ${why}` : ' · деревья на трассе вырубаются'}`); } }
     else if (this.tool === 'zone' && this.dragStart) {
       const a = this.dragStart; const x0 = Math.floor(Math.min(a.x, c.x) / TILE) * TILE, x1 = (Math.floor(Math.max(a.x, c.x) / TILE) + 1) * TILE, z0 = Math.floor(Math.min(a.z, c.z) / TILE) * TILE, z1 = (Math.floor(Math.max(a.z, c.z) / TILE) + 1) * TILE;
       const col = [0xff5050, 0x50e050, 0x50a0ff, 0xffd040][this.sub]; const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 2, z1 - z0), this.mat(col, 0.35)); m.position.set((x0 + x1) / 2, w.hAt((x0 + x1) / 2, (z0 + z1) / 2) + 2, (z0 + z1) / 2); add(m);
