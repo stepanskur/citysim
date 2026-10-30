@@ -149,10 +149,10 @@ export class Tools {
     return null; }
   buildRail(a: THREE.Vector3, b: THREE.Vector3, t = this.sub, record = true): boolean {
     const g = this.g; const L = Math.hypot(b.x - a.x, b.z - a.z); { const why = this.railWhy(a, b, t); if (why) { g.ui.toast('Путь не построен: ' + why, 'bad'); g.ui.cursorHint('⛔ ' + why); return false; } }
-    const cost = this.railCost(a, b, t) + this.demoCost(this.demoList(a, b, 7, this.railLv(t), true)); if (g.eco.money < cost) { g.ui.toast('Недостаточно средств: нужно ' + fmtMoney(cost), 'bad'); return false; }
+    const dl = this.demoList(a, b, 7, this.railLv(t), true); const cost = this.railCost(a, b, t) + this.demoCost(dl); if (g.eco.money < cost) { g.ui.toast('Недостаточно средств: нужно ' + fmtMoney(cost), 'bad'); return false; }
     const lv = this.railLv(t); const segs = Math.ceil(L / 200); let ok = 0;
     for (let s = 0; s < segs; s++) { const t0 = s / segs, t1 = (s + 1) / segs; ok += g.world.rail.addRoad(a.x + (b.x - a.x) * t0, a.z + (b.z - a.z) * t0, a.x + (b.x - a.x) * t1, a.z + (b.z - a.z) * t1, t, 12, -1, lv, 0).length; }
-    if (ok) { g.eco.spend(cost); if (record) g.log({ a: 'rail', p: [a.x, a.z, b.x, b.z], t, ...(lv ? { lv } : {}) }); } else { g.ui.toast('Путь не построен: трасса пересекает несовместимый путь', 'bad'); g.ui.cursorHint('⛔ трасса пересекает несовместимый путь'); }
+    if (ok) { g.eco.spend(cost); /* QA11 п.1: единое правило — здания из превью «снос N зд.» сносятся все и оплачиваются */ const W = g.world; let dn = 0; for (const o of dl) { if (W.bld[o.k]) { W.setBld(o.k, 0, 0); dn++; } W.zone[o.k] = 0; } if (record && dl.length) g.ui.toast(`Путь построен: снесено ${dl.length} зд., компенсация ${fmtMoney(this.demoCost(dl))}`, 'warn'); if (record) g.log({ a: 'rail', p: [a.x, a.z, b.x, b.z], t, ...(lv ? { lv } : {}) }); } else { g.ui.toast('Путь не построен: трасса пересекает несовместимый путь', 'bad'); g.ui.cursorHint('⛔ трасса пересекает несовместимый путь'); }
     return ok > 0;
   }
   /** необязательные поля команды (этап C), чтобы старые команды не менялись */

@@ -53,6 +53,7 @@ export class UI {
       </div>
     </div>`);
     for (const [id, pn] of UI.extraPanels) { const t = pn.title.replace(/^[^\p{L}\p{N}]+/u, '').trim(); const b = h(`<button class="cs-btn cs-btn--icon" data-p="${id}" data-tip="${t}">${ic(PANEL_IC[id] || 'sparkle')}</button>`); this.top.querySelector('button[data-p="settings"]')!.before(b); }
+    { /* QA11 п.4: иконочные кнопки — title и aria-label из data-tip */ const lab = () => document.querySelectorAll<HTMLElement>('button[data-tip]').forEach(b => { if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', b.dataset.tip!); if (!b.title) b.title = b.dataset.tip!; }); lab(); setTimeout(lab, 0); setTimeout(lab, 3000); }
     // п.4: слои — вертикальный список со свотчами
     this.layers = h(`<div id="layers" class="cs-glass cs-enter" hidden><div class="cs-label" style="padding:4px 8px 6px">Слои карты</div><div class="cs-list">${OVERLAYS.map(([o, n]) => `<div class="cs-row" data-o="${o}"><span class="cs-dot" style="background:${OV_SW[o]}"></span>${n}</div>`).join('')}</div></div>`);
     // п.1–2: док инструментов снизу по центру + сегмент-подменю над ним
@@ -104,7 +105,7 @@ export class UI {
     const t = TOOLS.find(t => t.id === g.tools.tool)!;
     if (!t.subs) { this.sub.hidden = true; this.sub.removeAttribute('aria-label'); return; } this.sub.setAttribute('role', 'dialog'); this.sub.setAttribute('aria-label', 'Панель: ' + t.name + ' — Esc закрывает'); this.sub.dataset.tool = t.id;
     const tips: Record<string, string> = { road: 'Клик — начало, клик — конец (цепочка продолжается). Ctrl — шаг угла 15°. Esc/ПКМ — отмена. Над водой — мост. L, PageUp/PageDown, +/− — уровень (тоннель 3…эстакада 4, шаг 8 м); дорога в уровне земли выравнивает рельеф (насыпь/выемка до 6 м); привязка к любой точке дороги; здания под сносом — красным с ценой: разные уровни пересекаются без перекрёстка.', curve: 'Клик: начало → контрольная точка → конец.', zone: 'Протяните прямоугольник. Зонируются только участки у дорог.', terrain: 'Удерживайте ЛКМ. «Выровнять» — к высоте точки нажатия.', place: 'Клик по участку у дороги.', line: 'Кликайте остановки. Enter или двойной клик — открыть линию. Трамвай/метро/поезд — только по путям.', rail: 'Клик — начало, клик — конец (цепочка). L — уровень; метро по умолчанию в тоннеле. U — режим метро (рентген).' };
-    this.sub.hidden = false; this.sub.innerHTML = `<div class="cs-seg">${t.subs.map((s, i) => `<button aria-pressed="${i === g.tools.sub}" data-i="${i}">${s}</button>`).join('')}</div><div class="tip2">${tips[t.id] || ''} <span class="cs-kbd">Tab</span> — следующий</div>`;
+    this.sub.hidden = false; this.sub.innerHTML = `<div class="cs-seg">${t.subs.map((s, i) => `<button aria-pressed="${i === g.tools.sub}" data-i="${i}" title="${t.name}: ${s.replace(/"/g, '')}" aria-label="${t.name}: ${s.replace(/"/g, '')}">${s}</button>`).join('')}</div><div class="tip2">${tips[t.id] || ''} <span class="cs-kbd">Tab</span> — следующий</div>`;
     this.sub.querySelectorAll('button[data-i]').forEach(b => (b as HTMLElement).onclick = () => g.tools.set(t.id, +(b as HTMLElement).dataset.i!));
     if (t.id === 'zone') { // F1: тема кисти (4 темы, без «Смешанного»); Shift+колесо — смена
       const T = g.tools; const NM: Record<string, string> = { lateSng: 'Позднее СНГ', russianClassic: 'Рус. классика', french: 'Париж', base: 'Пастила' };
