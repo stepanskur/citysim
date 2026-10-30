@@ -358,3 +358,20 @@ export function regularizeNetwork(net: RoadNet, log: string[]): NM {
     ops += ch; if (!ch) break; }
   const m = netMetrics(net); log.push(`регуляризация сети: правок ${ops}; узлы<${T.regMinNodeM} м ${m.close}, острые ${m.acute}, тупики у дорог ${m.deadNear}, параллели ${m.par}, пересечения ${m.cross}, короткие проспекты ${m.shortAv}`); return m;
 }
+
+/** QA7 п.3: острая Y-развилка двух веток шоссе (угол < hwForkMinDeg) — ветки плавно разводятся поворотом первых узлов вокруг развилки (θ, θ/2, θ/4, θ/8), чтобы излом в каждом узле оставался малым */
+export function spreadHighwayForks(net: RoadNet, minDeg = 55): number {
+  let fixed = 0; const al = (n: number) => net.nodes[n].edges.filter(e => net.edges[e].alive);
+  const relocate = (n: number, x: number, z: number): number => { const N0 = net.nodes[n]; const es = al(n).map(e => ({ ...net.edges[e], id: e })); for (const e of es) net.removeEdge(e.id); N0.alive = false; const m = net.newNode(x, z, N0.city);
+    for (const e of es) { const o = e.a === n ? e.b : e.a; const id = e.a === n ? net.addEdge(m, o, e.type, e.city, e.lv || 0, e.m || 0) : net.addEdge(o, m, e.type, e.city, e.lv || 0, e.m || 0); const E = net.edges[id] as any; if (E && (e as any).ow) E.ow = (e as any).ow; } return m; };
+  for (let n = 0; n < net.nodes.length; n++) { const N0 = net.nodes[n]; if (!N0.alive) continue; const hw = al(n).filter(e => net.edges[e].type === 2 && !(net.edges[e].lv || 0)); if (hw.length !== 2 || al(n).length < 3) continue;
+    const ang = (e: number) => { const E = net.edges[e], o = net.nodes[E.a === n ? E.b : E.a]; return Math.atan2(o.z - N0.z, o.x - N0.x); };
+    let d = ang(hw[1]) - ang(hw[0]); while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; if (Math.abs(d) * 180 / Math.PI >= minDeg) continue;
+    const th = (minDeg * Math.PI / 180 - Math.abs(d)) / 2; const sgn = [-Math.sign(d) || -1, Math.sign(d) || 1];
+    for (let bi = 0; bi < 2; bi++) { let prev = n, e = hw[bi]; let k = th;
+      for (let step = 0; step < 4; step++) { const E = net.edges[e]; if (!E || !E.alive) break; const m = E.a === prev ? E.b : E.a; const M = net.nodes[m]; const deg = al(m).length; if (deg !== 2) break;
+        const nextE = al(m).find(x => x !== e)!; const rx = M.x - N0.x, rz = M.z - N0.z, c = Math.cos(k * sgn[bi]), s = Math.sin(k * sgn[bi]); const m2 = relocate(m, N0.x + rx * c - rz * s, N0.z + rx * s + rz * c);
+        prev = m2; e = al(m2).find(x => { const X = net.edges[x]; const o = X.a === m2 ? X.b : X.a; const oe = net.edges[nextE]; return o === (oe.a === m ? oe.b : oe.a); }) ?? -1; if (e < 0) break; k /= 2; } }
+    fixed++; }
+  return fixed;
+}

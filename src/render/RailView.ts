@@ -35,10 +35,12 @@ export class RailView {
         if ((prev > -1.5) !== (o1 > -1.5)) { const t = o1 < prev ? { x: dx, z: dz } : { x: -dx, z: -dz }; try { surf.push(buildTunnelPortal(pb, t, 9, 6, Y(pb.x, pb.z) + o1 - 0.2)); } catch { /* */ } }
         prev = o1;
         if (Math.max(o0, o1) < -1.5) { try { tube.push(buildTunnelTube([pa, pb], 9, 6, y)); tube.push(buildTrack([pa, pb], { y, ballast: false, concrete: true })); axis.push(this.ribbon(pa, pb, y + 7, 3.2)); } catch { /* */ } continue; }
-        try { surf.push(buildTrack([pa, pb], { y: y + 0.02, ballast: lv === 0 && (E.type !== RAIL.TRAM || !this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2)) /* QA3 №2: трамвай вне дороги — на балласте, виден */, concrete: E.type !== RAIL.TRAM })); } catch { /* */ }
-        if (E.type === RAIL.TRAM) { const bal = lv === 0 && !this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2); const top = y + 0.02 + (bal ? 0.35 : 0) + 0.38; const g = 0.762, nx = -dz, nz = dx; // QA5 п.3: рельсы трамвая — толстые светлые полосы поверх модели
-          for (const sg of [-g, g]) surf.push(this.ribbon({ x: pa.x + nx * sg, z: pa.z + nz * sg }, { x: pb.x + nx * sg, z: pb.z + nz * sg }, top - 0.3, BALANCE.render.tramRailW, BALANCE.render.tramRailColor)); }
-        if (E.type === RAIL.TRAM && lv === 0) surf.push(this.ribbon(pa, pb, y - 0.2, this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2) ? BALANCE.render.tramBedW : BALANCE.render.tramBedWBallast, BALANCE.render.tramBedColor)); // QA4 п.8: заметное полотно трамвая под шпалами
+        if (lv !== 0) try { surf.push(buildTrack([pa, pb], { y: y + 0.02, ballast: lv === 0 && (E.type !== RAIL.TRAM || !this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2)) /* QA3 №2: трамвай вне дороги — на балласте, виден */, concrete: E.type !== RAIL.TRAM })); } catch { /* */ }
+        { const onR = E.type === RAIL.TRAM && this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2); const RB = BALANCE.render; const g = E.type === RAIL.TRAM ? 0.72 : 0.76, nx = -dz, nz = dx; // QA7 п.1: готовый путь — тёмный балласт, тёмные шпалы, два светлых рельса
+          if (lv === 0 && !onR) surf.push(this.ribbon(pa, pb, y + 0.05, E.type === RAIL.TRAM ? RB.tramBedW : RB.tramBedWBallast, RB.tramBedColor));
+          const top = y + (onR ? 0.12 : 0.45);
+          if (!onR) for (let q = 0; q < Math.max(1, Math.round((s1 - s0) / 1.6)); q++) { const t = (q + 0.5) / Math.max(1, Math.round((s1 - s0) / 1.6)); const cx = pa.x + (pb.x - pa.x) * t, cz = pa.z + (pb.z - pa.z) * t; surf.push(this.ribbon({ x: cx - dx * 0.2, z: cz - dz * 0.2 }, { x: cx + dx * 0.2, z: cz + dz * 0.2 }, top - 0.35, 2.6, RB.sleeperColor)); }
+          for (const sg of [-g, g]) surf.push(this.ribbon({ x: pa.x + nx * sg, z: pa.z + nz * sg }, { x: pb.x + nx * sg, z: pb.z + nz * sg }, top - 0.15, RB.tramRailW, RB.tramRailColor)); }
         if (lv > 0) { const gy = w.hAt((pa.x + pb.x) / 2, (pa.z + pb.z) / 2); if (y - Math.max(gy, 0) >= 2) try { br.push(buildBridge([pa, pb], 6, y - 0.05, Math.min(gy, y - 3), k % 5 === 4 ? (s1 - s0) * 0.999 : 1e6)); } catch { /* */ } }
       } }
     // станции по линиям

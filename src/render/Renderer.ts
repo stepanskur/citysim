@@ -684,7 +684,7 @@ export class Renderer {
       gm.uBase.value.set(GROUND_V5.bladeBase).multiplyScalar(k); gm.uTip.value.set(GROUND_V5.bladeTip).multiplyScalar(k); }
     for (const ch of this.chunks.values()) if (ch.lamps) { ch.lamps.update(n, d); ch.lamps.cones.visible = false; /* QA3 №12: пятна света на асфальте и вблизи */ { const u = (ch.lamps as any).u.dot; const on = THREE.MathUtils.smoothstep(n, 0.25, 0.7); u.uFade.value = Math.max(u.uFade.value, on * BALANCE.render.lampDotNear); } /* QA3 №12: цепочки фонарей видны и вблизи */ /* вблизи пятна под bloom читаются как шары в воздухе; */ /* конусы под bloom — пятна в воздухе; оставляем пятна на асфальте и плафоны */ }
     const v0 = this.vehMeshes[0], v1 = this.vehMeshes[1]; const on = n > 0.3 && d < 2600;
-    if (on) { const a = this.carLights; const c0 = v0.count, c1 = v1.count; for (const o of [a.head, a.tail, a.beam]) { const arr = o.instanceMatrix.array as Float32Array; arr.set((v0.instanceMatrix.array as Float32Array).subarray(0, c0 * 16)); arr.set((v1.instanceMatrix.array as Float32Array).subarray(0, c1 * 16), c0 * 16); o.count = c0 + c1; o.instanceMatrix.needsUpdate = true; } }
+    if (on) { const a = this.carLights; const c0 = v0.count, c1 = v1.count; for (const o of [a.head, a.tail, a.beam]) { const arr = o.instanceMatrix.array as Float32Array; arr.set((v0.instanceMatrix.array as Float32Array).subarray(0, c0 * 16)); arr.set((v1.instanceMatrix.array as Float32Array).subarray(0, c1 * 16), c0 * 16); o.count = c0 + c1; o.instanceMatrix.clearUpdateRanges(); o.instanceMatrix.addUpdateRange(0, (c0 + c1) * 16); o.instanceMatrix.needsUpdate = true; } }
     this.carLights.update(on ? n : 0, d);
   }
   // ---------- lighting ----------
@@ -696,7 +696,7 @@ export class Renderer {
     this.sun.position.set(tx + Math.cos(a) * R, Math.max(200, sy * R), tz + R * 0.35);
     this.sun.target.position.set(tx, 0, tz);
     this.rig.sky.position.copy(this.cam.position); ((this.rig.sky.material as THREE.ShaderMaterial).uniforms.uSunDir.value as THREE.Vector3).set(Math.cos(a), Math.max(0.05, sy), 0.35).normalize();
-    const sc = Math.min(1200, Math.max(150, this.ctl.dist * 0.8)); this.renderer.shadowMap.enabled = this.q.shadows && this.ctl.dist < 2200; /* тени только вблизи */ const cam = this.sun.shadow.camera;
+    const sc = Math.min(700, Math.max(150, this.ctl.dist * 0.8)); this.renderer.shadowMap.enabled = this.q.shadows && this.ctl.dist < 1100; /* QA7 п.5: тени только вблизи — теневой проход был почти на все чанки */ /* тени только вблизи */ const cam = this.sun.shadow.camera;
     cam.left = -sc; cam.right = sc; cam.top = sc; cam.bottom = -sc; cam.near = 10; cam.far = R * 2.5; cam.updateProjectionMatrix();
     (this.scene.fog as THREE.Fog).near = Math.max(1500, this.ctl.dist * 2); /* QA2 п.9: даль без серой пелены */ { const U = groundUniforms.uFar.value; U.x = Math.max(this.farBase.x, this.ctl.dist * 1.6); U.y = Math.max(this.farBase.y, U.x * 3); U.z = this.farBase.z * 0.5; groundUniforms.uFarTint.value = this.farTint0 * 0.4; } groundUniforms.uTime.value = performance.now() / 1000; groundUniforms.uFogCol.value.copy((this.scene.fog as THREE.Fog).color); (this.scene.fog as THREE.Fog).far = Math.max(this.q.viewDist * 1.6, this.ctl.dist * 4);
   }

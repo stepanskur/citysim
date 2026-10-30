@@ -16,6 +16,8 @@ import { TILE } from './world/consts';
 import { RoadNet } from './world/RoadNet';
 
 export const SPEEDS = [0, 1, 3, 8, 20];
+/** QA7 п.5: частичная заливка InstancedBufferAttribute — только первые n экземпляров */
+export function updN(a: THREE.BufferAttribute, n: number, k: number) { a.clearUpdateRanges(); if (n > 0) { a.addUpdateRange(0, n * k); a.needsUpdate = true; } }
 export class Game {
   r: Renderer; traffic: Traffic; transit: Transit; eco: Economy; tools: Tools; ui: UI;
   speed = 1; acc = 0; ecoAcc = 0; last = performance.now(); fps = 60; frameN = 0;
@@ -118,7 +120,7 @@ export class Game {
       const y = ln.track ? (ln.type >= 2 ? Math.max(w.hAt(x, z), 0) : w.roadY(x, z)) + (dy || 0) + (ln.type >= 2 ? 0.5 : 0) /* этап D: по путям, dy — эстакада/тоннель */ : ln.type === 2 ? Math.max(w.hAt(x, z), 0) + 9 : ln.type === 3 ? Math.max(w.hAt(x, z), 1.5) + 0.8 : w.roadY(x, z);
       d.position.set(x, y, z); d.rotation.set(0, yaw, 0); d.updateMatrix(); M.setMatrixAt(i, d.matrix); M.setColorAt(i, this.col.setHex(ln.color)); cnt[mi]++;
     });
-    m.forEach((M, i) => { M.count = cnt[i]; M.instanceMatrix.needsUpdate = true; if (M.instanceColor) M.instanceColor.needsUpdate = true; });
+    m.forEach((M, i) => { const pc = (M as any).__pc || 0; M.count = cnt[i]; (M as any).__pc = cnt[i]; if (!cnt[i] && !pc) return; updN(M.instanceMatrix, cnt[i], 16); if (M.instanceColor) updN(M.instanceColor, cnt[i], 3); }); /* QA7 п.5: заливаем только занятые экземпляры, а не всю ёмкость (было ~1.6 МБ/кадр) */
     // traffic lights near camera
     const L = r.lightMesh; let n = 0;
     const P = r.signalPoles; let np = 0;
@@ -137,8 +139,8 @@ export class Game {
       }
       d.scale.set(1, 1, 1);
     }
-    P.count = np; P.instanceMatrix.needsUpdate = true;
-    L.count = n; L.instanceMatrix.needsUpdate = true; if (L.instanceColor) L.instanceColor.needsUpdate = true;
+    P.count = np; updN(P.instanceMatrix, np, 16);
+    L.count = n; updN(L.instanceMatrix, n, 16); if (L.instanceColor) updN(L.instanceColor, n, 3);
   }
   buildLineMeshes() {
     const grp = this.r.lineGroup; while (grp.children.length) { const o = grp.children.pop() as THREE.Mesh; o.geometry?.dispose(); }
