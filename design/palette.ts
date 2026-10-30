@@ -170,7 +170,7 @@ export const NIGHT = {
   /** Цвета источников (HDR-множитель ≥1 → попадают в bloom). */
   lamp: { sodium: 0xffb45a, led: 0xfff1d6, cold: 0xcfe0ff, pool: 0xffc27a, head: 0xfff6dc, tail: 0xff2a3a, brake: 0xff1020, window: 0xffc878, windowCold: 0xbfd8ff, neon: [0x5fe0c8, 0xff5fa2, 0x8f7bff, 0xffc145] },
   /** Интенсивности (умножаются на цвет в шейдере, toneMapped). */
-  intensity: { lampHead: 6.0, pool: 0.42, cone: 0.1, carHead: 5.0, carTail: 3.2, window: 1.5, highwayNeon: 2.4, spaceDot: 2.2 },
+  intensity: { lampHead: 6.0, pool: 0.3, cone: 0.1, carHead: 5.0, carTail: 3.2, window: 1.5, highwayNeon: 2.4, spaceDot: 1.1 },
   /** Bloom (UnrealBloomPass). */
   bloom: { strength: 0.85, radius: 0.55, threshold: 0.82, farStrength: 0.95 },
   /** «Ночное видение» слоёв: тёмная монохромная база + неон данных. */

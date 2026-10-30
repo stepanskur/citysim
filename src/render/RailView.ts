@@ -13,6 +13,7 @@ import { RAIL } from '../world/World';
 import type { Line } from '../sim/Transit';
 import { ROAD_SPEC } from '../../design/palette';
 import { BALANCE } from '../sim/balance';
+import { ROAD_TYPES } from '../world/RoadNet';
 
 const TUNNEL_AXIS = METRO_VIEW.lineColors[0];
 export class RailView {
@@ -31,14 +32,15 @@ export class RailView {
     for (let e = 0; e < R.edges.length; e++) { const E = R.edges[e]; if (!E.alive) continue; const A = R.nodes[E.a], B = R.nodes[E.b]; const dx = (B.x - A.x) / E.len, dz = (B.z - A.z) / E.len; const lv = E.lv || 0;
       const n = Math.max(1, Math.ceil(E.len / 6)); let prev = w.edgeOff(e, 0, R);
       for (let k = 0; k < n; k++) { const s0 = E.len * k / n, s1 = E.len * (k + 1) / n; const pa = { x: A.x + dx * s0, z: A.z + dz * s0 }, pb = { x: A.x + dx * s1, z: A.z + dz * s1 };
-        const o0 = w.edgeOff(e, s0, R), o1 = w.edgeOff(e, s1, R); const ya = Y(pa.x, pa.z) + o0, yb = Y(pb.x, pb.z) + o1, y = Math.min(ya, yb);
+        const o0 = w.edgeOff(e, s0, R), o1 = w.edgeOff(e, s1, R); const ya = Y(pa.x, pa.z) + o0, yb = Y(pb.x, pb.z) + o1; let y = Math.min(ya, yb);
         if ((prev > -1.5) !== (o1 > -1.5)) { const t = o1 < prev ? { x: dx, z: dz } : { x: -dx, z: -dz }; try { surf.push(buildTunnelPortal(pb, t, 9, 6, Y(pb.x, pb.z) + o1 - 0.2)); } catch { /* */ } }
         prev = o1;
         if (Math.max(o0, o1) < -1.5) { try { tube.push(buildTunnelTube([pa, pb], 9, 6, y)); tube.push(buildTrack([pa, pb], { y, ballast: false, concrete: true })); axis.push(this.ribbon(pa, pb, y + 7, 3.2)); } catch { /* */ } continue; }
         if (lv !== 0) try { surf.push(buildTrack([pa, pb], { y: y + 0.02, ballast: lv === 0 && (E.type !== RAIL.TRAM || !this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2)) /* QA3 №2: трамвай вне дороги — на балласте, виден */, concrete: E.type !== RAIL.TRAM })); } catch { /* */ }
-        { const onR = E.type === RAIL.TRAM && this.onRoad(w, (pa.x + pb.x) / 2, (pa.z + pb.z) / 2); const RB = BALANCE.render; const g = E.type === RAIL.TRAM ? 0.72 : 0.76, nx = -dz, nz = dx; // QA7 п.1: готовый путь — тёмный балласт, тёмные шпалы, два светлых рельса
+        { const mx = (pa.x + pb.x) / 2, mz = (pa.z + pb.z) / 2; const onR = lv === 0 && this.onRoad(w, mx, mz); /* QA9 п.2: на пересечении с дорогой — переезд: рельсы поверх асфальта, без разрыва */ if (onR) y = Math.max(y, w.roadY(mx, mz) + 0.05); const RB = BALANCE.render; const g = E.type === RAIL.TRAM ? 0.72 : 0.76, nx = -dz, nz = dx; // QA7 п.1: готовый путь — тёмный балласт, тёмные шпалы, два светлых рельса
           if (lv === 0 && !onR) surf.push(this.ribbon(pa, pb, y + 0.05, E.type === RAIL.TRAM ? RB.tramBedW : RB.tramBedWBallast, RB.tramBedColor));
-          const top = y + (onR ? 0.12 : 0.45);
+          if (onR && E.type !== RAIL.TRAM) surf.push(this.ribbon(pa, pb, y + 0.1, RB.tramBedW, 0x4a4542)); /* QA10: ж/д переезд — тёмный настил, рельсы видны поверх асфальта */
+          const top = y + (onR ? (E.type === RAIL.TRAM ? 0.12 : 0.3) : 0.45);
           if (!onR) for (let q = 0; q < Math.max(1, Math.round((s1 - s0) / 1.6)); q++) { const t = (q + 0.5) / Math.max(1, Math.round((s1 - s0) / 1.6)); const cx = pa.x + (pb.x - pa.x) * t, cz = pa.z + (pb.z - pa.z) * t; surf.push(this.ribbon({ x: cx - dx * 0.2, z: cz - dz * 0.2 }, { x: cx + dx * 0.2, z: cz + dz * 0.2 }, top - 0.35, 2.6, RB.sleeperColor)); }
           for (const sg of [-g, g]) surf.push(this.ribbon({ x: pa.x + nx * sg, z: pa.z + nz * sg }, { x: pb.x + nx * sg, z: pb.z + nz * sg }, top - 0.15, RB.tramRailW, RB.tramRailColor)); }
         if (lv > 0) { const gy = w.hAt((pa.x + pb.x) / 2, (pa.z + pb.z) / 2); if (y - Math.max(gy, 0) >= 2) try { br.push(buildBridge([pa, pb], 6, y - 0.05, Math.min(gy, y - 3), k % 5 === 4 ? (s1 - s0) * 0.999 : 1e6)); } catch { /* */ } }
@@ -69,7 +71,7 @@ export class RailView {
     for (let a = a0 - 1; a <= a0 + 1; a++) for (let b = b0 - 1; b <= b0 + 1; b++) { const cell = net.nodeGrid.get(a * 131072 + b); if (!cell) continue;
       for (const id of cell) for (const e of net.nodes[id].edges) { const E = net.edges[e]; if (!E.alive || (E.lv || 0) !== 0) continue; const A = net.nodes[E.a], B = net.nodes[E.b];
         const vx = B.x - A.x, vz = B.z - A.z, L2 = vx * vx + vz * vz || 1; const t = Math.max(0, Math.min(1, ((x - A.x) * vx + (z - A.z) * vz) / L2));
-        if (Math.hypot(A.x + vx * t - x, A.z + vz * t - z) < 6) return true; } }
+        if (Math.hypot(A.x + vx * t - x, A.z + vz * t - z) < Math.max(6, ROAD_TYPES[E.type].w / 2 + 3)) return true; } }
     return false; }
   ribbon(a: { x: number; z: number }, b: { x: number; z: number }, y: number, wd: number, color = TUNNEL_AXIS) { const L = Math.hypot(b.x - a.x, b.z - a.z) + wd * 0.5; const g = new THREE.BoxGeometry(L, 0.6, wd); g.rotateY(-Math.atan2(b.z - a.z, b.x - a.x)); g.translate((a.x + b.x) / 2, y, (a.z + b.z) / 2); const c = new THREE.Color(color); const n = g.attributes.position.count; const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv'); return g; }
 }

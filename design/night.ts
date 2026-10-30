@@ -76,7 +76,7 @@ const fade = (d: number, far: number) => 1 - THREE.MathUtils.smoothstep(d, far *
 
 export class StreetLampSet {
   readonly group = new THREE.Group(); poles: THREE.InstancedMesh; pools: THREE.InstancedMesh; cones: THREE.InstancedMesh; dots: THREE.Points;
-  private u = { pool: { uCol: { value: new THREE.Color(NIGHT.lamp.pool) }, uI: { value: NIGHT.intensity.pool }, uFade: { value: 1 } }, cone: { uCol: { value: new THREE.Color(NIGHT.lamp.pool) }, uI: { value: NIGHT.intensity.cone }, uFade: { value: 1 } }, dot: { uI: { value: NIGHT.intensity.spaceDot }, uFade: { value: 0 }, uPx: { value: 9 }, uScale: { value: 1 } } };
+  private u = { pool: { uCol: { value: new THREE.Color(NIGHT.lamp.pool) }, uI: { value: NIGHT.intensity.pool }, uFade: { value: 1 } }, cone: { uCol: { value: new THREE.Color(NIGHT.lamp.pool) }, uI: { value: NIGHT.intensity.cone }, uFade: { value: 1 } }, dot: { uI: { value: NIGHT.intensity.spaceDot }, uFade: { value: 0 }, uPx: { value: 4 }, uScale: { value: 1 } } };
   /** poleMat — общий styled material (createStyledMaterial), чтобы плафоны горели по uNight. */
   constructor(lamps: Lamp[], poleMat: THREE.Material, y = 0) {
     const n = lamps.length, M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), V = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -92,7 +92,7 @@ export class StreetLampSet {
       const ang = Math.atan2(l.ax, l.az); Q.setFromAxisAngle(up, ang);
       M.compose(V.set(l.x, y, l.z), Q, S.set(1, l.h / 8, l.arm / 1.4)); this.poles.setMatrixAt(i, M);
       const hx = l.x + l.ax * l.arm, hz = l.z + l.az * l.arm;
-      M.compose(V.set(hx + l.ax * l.pool * 0.15, y + 0.04, hz + l.az * l.pool * 0.15), Q, S.set(l.pool * 0.85, 1, l.pool)); this.pools.setMatrixAt(i, M);
+      M.compose(V.set(hx + l.ax * l.pool * 0.15, y + 0.04, hz + l.az * l.pool * 0.15), Q, S.set(l.pool * 0.85 * 0.55, 1, l.pool * 0.55)); /* QA9 п.1: пятно меньше */ this.pools.setMatrixAt(i, M);
       M.compose(V.set(hx, y + l.h - 0.2, hz), new THREE.Quaternion(), S.set(l.pool * 0.55, l.h - 0.2, l.pool * 0.55)); this.cones.setMatrixAt(i, M);
       const c = new THREE.Color(NIGHT.lamp[l.light]); dp.push(hx, y + l.h, hz); dc.push(c.r, c.g, c.b);
     });
@@ -104,7 +104,7 @@ export class StreetLampSet {
   /** night 0..1 (uNight), dist — дистанция камеры до цели. Вызывать раз в кадр. */
   update(night: number, dist: number) {
     const on = THREE.MathUtils.smoothstep(night, 0.25, 0.7);
-    this.u.pool.uFade.value = on * fade(dist, LIGHT_LOD.pool) * (1 + 0.5 * THREE.MathUtils.smoothstep(dist, 400, 1600)) * (1 - 0.85 * nightUniforms.uVision.value); // издали пятна чуть ярче; в слоях — приглушены // издали пятна ярче → «сетка огней» this.u.cone.uFade.value = on * fade(dist, LIGHT_LOD.cone) * (1 - nightUniforms.uVision.value);
+    this.u.pool.uFade.value = on * fade(dist, LIGHT_LOD.pool) * (1 - 0.75 * THREE.MathUtils.smoothstep(dist, 150, 700)) /* QA9 п.1: издали пятна гаснут, а не ярче */ * (1 - 0.85 * nightUniforms.uVision.value); // издали пятна чуть ярче; в слоях — приглушены // издали пятна ярче → «сетка огней» this.u.cone.uFade.value = on * fade(dist, LIGHT_LOD.cone) * (1 - nightUniforms.uVision.value);
     this.u.dot.uFade.value = on * THREE.MathUtils.smoothstep(dist, LIGHT_LOD.dotFrom * 0.7, LIGHT_LOD.dotFrom);
     this.u.dot.uScale.value = 1; this.poles.visible = dist < LIGHT_LOD.pole; this.cones.visible = this.u.cone.uFade.value > 0.01; this.pools.visible = this.u.pool.uFade.value > 0.01;
   }

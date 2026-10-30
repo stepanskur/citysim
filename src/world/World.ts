@@ -98,10 +98,10 @@ export class World {
   railVer = 0;
   /** остановки/станции линий (заполняет game) */ stopPts: { x: number; z: number }[] = [];
   /** QA6 п.1–2: деревья/кусты не ставим на наземных путях (полоса w/2 + treeClearM), на дорогах и у станций */
-  treeFree(x: number, z: number): boolean { const cl = BALANCE.render.treeClearM;
+  treeFree(x: number, z: number, pad = 0): boolean { const cl = BALANCE.render.treeClearM + pad;
     const segD = (net: RoadNet, e: number) => { const E = net.edges[e], A = net.nodes[E.a], B = net.nodes[E.b]; const vx = B.x - A.x, vz = B.z - A.z, l = vx * vx + vz * vz; const t = l ? Math.max(0, Math.min(1, ((x - A.x) * vx + (z - A.z) * vz) / l)) : 0; return Math.hypot(A.x + vx * t - x, A.z + vz * t - z); };
     for (const e of this.rail.edgesNear(x, z, 20)) { const E = this.rail.edges[e]; if (!E.alive || (E.lv || 0) !== 0) continue; if (segD(this.rail, e) < RAIL_TYPES[E.type].w / 2 + cl) return false; }
-    for (const e of this.net.edgesNear(x, z, 24)) { const E = this.net.edges[e]; if (!E.alive || (E.lv || 0) > 0) continue; if (segD(this.net, e) < ROAD_TYPES[E.type].w / 2 + cl * 0.5) return false; }
+    for (const e of this.net.edgesNear(x, z, 24)) { const E = this.net.edges[e]; if (!E.alive || (E.lv || 0) > 0) continue; if (segD(this.net, e) < ROAD_TYPES[E.type].w / 2 + (cl - pad) * 0.5) return false; }
     const sr = BALANCE.render.treeClearStationM; for (const p of this.stopPts) if (Math.abs(p.x - x) < sr && Math.abs(p.z - z) < sr) return false;
     return true; }
   hookRail() { this.rail.onEdgeAdded = e => this.railChanged(e, true); this.rail.onEdgeRemoved = e => this.railChanged(e, false); }

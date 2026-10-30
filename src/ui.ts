@@ -70,7 +70,7 @@ export class UI {
     (this.top.querySelector('#layers-btn') as HTMLElement).onclick = () => { this.layers.hidden = !this.layers.hidden; };
     this.layers.querySelectorAll('[data-o]').forEach(r => (r as HTMLElement).onclick = () => { this.setOverlay((r as HTMLElement).dataset.o as Overlay); });
     TOOLS.forEach((t, i) => { if (i === 1 || i === 4 || i === 7) this.toolsEl.appendChild(h(`<span class="cs-sep"></span>`));
-      const b = h(`<button class="cs-tool${t.id === 'bulldoze' ? ' cs-tool--danger' : ''}" data-t="${t.id}" aria-pressed="false" data-tip="${t.name}">${ic(t.id === 'curve' ? 'road' : t.icon)}${t.id === 'curve' ? '<i class="cv">~</i>' : ''}<span class="cs-kbd k">${t.key}</span></button>`);
+      const b = h(`<button class="cs-tool${t.id === 'bulldoze' ? ' cs-tool--danger' : ''}" data-t="${t.id}" id="tool-${t.id}" aria-label="${t.name} (${t.key})" aria-pressed="false" data-tip="${t.name}">${ic(t.id === 'curve' ? 'road' : t.icon)}${t.id === 'curve' ? '<i class="cv">~</i>' : ''}<span class="cs-kbd k">${t.key}</span></button>`);
       b.onclick = () => g.tools.set(t.id, t.id === 'zone' ? 1 : 0); this.toolsEl.appendChild(b); });
     { const bb = h(`<button class="cs-tool" data-bm="1" aria-pressed="false" data-tip="Меню строительства (B): Q W E R T — службы, Tab — подвкладка, 1–9 — карточка, Esc">${ic('build')}<span class="cs-kbd k">B</span></button>`); this.toolsEl.insertBefore(bb, this.toolsEl.firstChild);
       this.bm = new BuildMenu(g, document.body); bb.onclick = () => { this.bm.toggle(); bb.setAttribute('aria-pressed', String(this.bm.open)); }; }
@@ -102,7 +102,7 @@ export class UI {
   refreshTools() {
     const g = this.g; this.toolsEl.querySelectorAll('button[data-t]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.t === g.tools.tool)));
     const t = TOOLS.find(t => t.id === g.tools.tool)!;
-    if (!t.subs) { this.sub.hidden = true; return; }
+    if (!t.subs) { this.sub.hidden = true; this.sub.removeAttribute('aria-label'); return; } this.sub.setAttribute('role', 'dialog'); this.sub.setAttribute('aria-label', 'Панель: ' + t.name + ' — Esc закрывает'); this.sub.dataset.tool = t.id;
     const tips: Record<string, string> = { road: 'Клик — начало, клик — конец (цепочка продолжается). Ctrl — шаг угла 15°. Esc/ПКМ — отмена. Над водой — мост. L, PageUp/PageDown, +/− — уровень (тоннель 3…эстакада 4, шаг 8 м); дорога в уровне земли выравнивает рельеф (насыпь/выемка до 6 м); привязка к любой точке дороги; здания под сносом — красным с ценой: разные уровни пересекаются без перекрёстка.', curve: 'Клик: начало → контрольная точка → конец.', zone: 'Протяните прямоугольник. Зонируются только участки у дорог.', terrain: 'Удерживайте ЛКМ. «Выровнять» — к высоте точки нажатия.', place: 'Клик по участку у дороги.', line: 'Кликайте остановки. Enter или двойной клик — открыть линию. Трамвай/метро/поезд — только по путям.', rail: 'Клик — начало, клик — конец (цепочка). L — уровень; метро по умолчанию в тоннеле. U — режим метро (рентген).' };
     this.sub.hidden = false; this.sub.innerHTML = `<div class="cs-seg">${t.subs.map((s, i) => `<button aria-pressed="${i === g.tools.sub}" data-i="${i}">${s}</button>`).join('')}</div><div class="tip2">${tips[t.id] || ''} <span class="cs-kbd">Tab</span> — следующий</div>`;
     this.sub.querySelectorAll('button[data-i]').forEach(b => (b as HTMLElement).onclick = () => g.tools.set(t.id, +(b as HTMLElement).dataset.i!));
