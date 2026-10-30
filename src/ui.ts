@@ -38,7 +38,7 @@ export class UI {
   static extraPanels = new Map<string, { title: string; render: (el: HTMLElement, g: Game, force: boolean) => void }>();
   static registerPanel(id: string, title: string, render: (el: HTMLElement, g: Game, force: boolean) => void) { UI.extraPanels.set(id, { title, render }); }
   root = document.getElementById('ui')!; top: HTMLElement; layers!: HTMLElement; tip!: HTMLElement; toolsEl: HTMLElement; sub: HTMLElement; right: HTMLElement; info: HTMLElement; notes: HTMLElement; mini: HTMLCanvasElement; hint: HTMLElement; legend: HTMLElement;
-  panel = ''; lastUpd = 0; selCity = 0; miniBase: ImageData | null = null; miniT = 0; curLine = -1;
+  panel = ''; panelMin = false; lastUpd = 0; selCity = 0; miniBase: ImageData | null = null; miniT = 0; curLine = -1;
   constructor(public g: Game) {
     this.root.innerHTML = '';
     // UI_AUDIT P0 п.3: капсула статов слева, сегмент скорости по центру, иконки панелей справа
@@ -63,6 +63,8 @@ export class UI {
     this.hint = h(`<div id="cur-hint" class="cs-glass"></div>`); // п.9
     this.legend = h(`<div class="legend cs-glass"></div>`); this.tip = h(`<div class="cs-tooltip" id="tip" hidden></div>`);
     for (const e of [this.top, this.layers, this.toolsEl, this.sub, this.right, this.info, this.notes, miniWrap, this.hint, this.legend, this.tip]) this.root.appendChild(e);
+    // QA3 №13: панель цели обучения сворачивается кликом по заголовку цели
+    document.addEventListener('click', ev => { const t = ev.target as HTMLElement; const g = t.closest?.('#eng-goal'); if (g && !t.closest('button') && t.closest('.t, .row')) g.classList.toggle('open'); });
     const sp = this.top.querySelector('#speeds')!; ['pause', 'play', 'ff', 'ff', 'ff'].forEach((t, i) => { const b = h(`<button aria-pressed="false" data-tip="Скорость ${SPEEDS[i]}× (${i === 0 ? 'Пробел' : 'клавиша ' + i})">${ic(t)}${i >= 3 ? `<sup>${i - 1}</sup>` : ''}</button>`); b.onclick = () => this.setSpeed(i); sp.appendChild(b); });
     this.top.querySelectorAll('button[data-p]').forEach(b => (b as HTMLElement).onclick = () => this.open((b as HTMLElement).dataset.p!));
     (this.top.querySelector('#layers-btn') as HTMLElement).onclick = () => { this.layers.hidden = !this.layers.hidden; };
@@ -124,7 +126,7 @@ export class UI {
     while (this.notes.children.length > 3) this.notes.lastElementChild!.remove();
     setTimeout(() => { n.style.transition = 'opacity .5s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 550); }, 6000);
   }
-  open(p: string) { this.panel = this.panel === p ? '' : p; this.top.querySelectorAll('button[data-p]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.p === this.panel))); this.right.style.display = this.panel ? 'block' : 'none'; this.layers.classList.toggle('shift', !!this.panel); this.notes.classList.toggle('shift', !!this.panel); this.renderPanel(true); }
+  open(p: string, fromUser = true) { if (fromUser && this.panel !== p) this.panelMin = false; this.panel = this.panel === p ? '' : p; this.top.querySelectorAll('button[data-p]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.p === this.panel))); this.right.style.display = this.panel ? 'block' : 'none'; this.layers.classList.toggle('shift', !!this.panel); this.notes.classList.toggle('shift', !!this.panel); this.renderPanel(true); }
   frame() {
     const now = performance.now();
     this.hint.style.display = now - this.hintSetT < 200 ? 'block' : 'none'; this.hint.textContent = this.hintS;
@@ -171,7 +173,8 @@ export class UI {
   decoratePanel() { // UI_AUDIT п.5: шапка .cs-panel__head (иконка + Manrope + закрыть), тело .cs-panel__body
     const R = this.right; const h3 = R.querySelector(':scope > h3'); if (!h3) return; const title = (h3.textContent || '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
     const body = document.createElement('div'); body.className = 'cs-panel__body'; while (h3.nextSibling) body.appendChild(h3.nextSibling);
-    const head = h(`<div class="cs-panel__head">${ic(PANEL_IC[this.panel] || 'sparkle')}<span>${title}</span><button class="cs-btn cs-btn--icon x" data-tip="Закрыть">${ic('x')}</button></div>`); h3.replaceWith(head); R.appendChild(body); (head.querySelector('.x') as HTMLElement).onclick = () => this.open(this.panel);
+    const head = h(`<div class="cs-panel__head">${ic(PANEL_IC[this.panel] || 'sparkle')}<span>${title}</span><button class="cs-btn cs-btn--icon mn" data-tip="${this.panelMin ? 'Развернуть' : 'Свернуть'}">${this.panelMin ? '▾' : '▴'}</button><button class="cs-btn cs-btn--icon x" data-tip="Закрыть">${ic('x')}</button></div>`); h3.replaceWith(head); R.appendChild(body); (head.querySelector('.x') as HTMLElement).onclick = () => this.open(this.panel);
+    (head.querySelector('.mn') as HTMLElement).onclick = () => this.setPanelMin(!this.panelMin); R.classList.toggle('min', this.panelMin);
     R.querySelectorAll('button:not(.cs-btn)').forEach(b => b.classList.add('cs-btn')); R.querySelectorAll('button.on').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'true'); });
   }
   renderPanel0(force: boolean) {
@@ -288,7 +291,9 @@ export class UI {
     } catch (err: any) { this.toast('Ошибка сохранения: ' + err.message + ' (возможно, мир слишком большой для localStorage)', 'bad'); }
   }
   quickSave() { this.save(1); }
-  showLine(_id: number) { if (this.panel !== 'transport') this.open('transport'); }
+  /** QA3: при строительстве линий панель открывается свёрнутой (только шапка), карта остаётся кликабельной */
+  showLine(_id: number) { if (this.panel !== 'transport') { this.open('transport', false); this.setPanelMin(true); } }
+  setPanelMin(v: boolean) { this.panelMin = v; this.right.classList.toggle('min', v); this.renderPanel(true); }
   inspect(p: THREE.Vector3) {
     const g = this.g, w = g.world; const i = Math.floor(p.x / TILE), j = Math.floor(p.z / TILE); if (i < 0 || j < 0 || i >= w.N || j >= w.N) return; const k = j * w.N + i;
     const ci = w.cityOf[k] ? w.cityOf[k] - 1 : w.nearestCity(p.x, p.z, 1.5); const city = ci >= 0 ? g.eco.cities[ci] : null;

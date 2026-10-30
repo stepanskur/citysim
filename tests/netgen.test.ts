@@ -1,6 +1,6 @@
 // Этап B: инварианты генерации сети (mechanics/13)
 import { genWorld } from '../src/gen/worldgen';
-import { components, CLS, overlapDup } from '../src/gen/netgen';
+import { components, CLS, overlapDup, netMetrics } from '../src/gen/netgen';
 import { RoadNet } from '../src/world/RoadNet';
 import { BALANCE } from '../src/sim/balance';
 let fail = 0; const ok = (c: boolean, m: string) => { console.log((c ? 'ok ' : 'FAIL ') + m); if (!c) fail++; };
@@ -59,6 +59,17 @@ for (const [seed, size] of [[7, 2], [42, 1], [1234, 0], [11, 1], [99, 2], [2024,
       mx = Math.max(mx, 180 - Math.acos(Math.max(-1, Math.min(1, d[0][0] * d[1][0] + d[0][1] * d[1][1]))) * 180 / Math.PI); });
     ok(mx <= 12, `seed ${seed}: макс. излом шоссе ${mx.toFixed(1)}° (≤ 12°)`); }
   console.log('   ' + ((globalThis as any).__netgenLog || []).join('; '));
+  { // QA3 №1: пересечения дорог в одном уровне без общего узла
+    const E = net.edges.filter((e: any) => e.alive); let cr = 0; const N = net.nodes;
+    for (let i = 0; i < E.length; i++) { const e = E[i], a = N[e.a], b = N[e.b]; for (let j = i + 1; j < E.length; j++) { const f = E[j]; if ((e.lv || 0) !== (f.lv || 0) || e.a === f.a || e.a === f.b || e.b === f.a || e.b === f.b) continue; const c = N[f.a], d = N[f.b];
+      if (Math.max(a.x, b.x) < Math.min(c.x, d.x) || Math.max(c.x, d.x) < Math.min(a.x, b.x) || Math.max(a.z, b.z) < Math.min(c.z, d.z) || Math.max(c.z, d.z) < Math.min(a.z, b.z)) continue;
+      const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x); if (Math.abs(den) < 1e-9) continue; const t = ((c.x - a.x) * (d.z - c.z) - (c.z - a.z) * (d.x - c.x)) / den, u = ((c.x - a.x) * (b.z - a.z) - (c.z - a.z) * (b.x - a.x)) / den; if (t > 0.02 && t < 0.98 && u > 0.02 && u < 0.98) cr++; } }
+    ok(cr === 0, `seed ${seed}: пересечений дорог в уровне без узла ${cr}`); }
+  if ([7, 99, 2024].includes(seed)) { // Степан/QA3 №4–10: метрики сети улиц на эталонных сидах — все нулевые
+    const m = netMetrics(net); const T = BALANCE.netgen;
+    ok(m.close === 0, `seed ${seed}: уличных узлов ближе ${T.regMinNodeM} м ${m.close}`); ok(m.acute === 0, `seed ${seed}: острых углов < ${T.regAcuteDeg}° между улицами ${m.acute}`);
+    ok(m.deadNear === 0, `seed ${seed}: тупиков ближе ${T.regDeadNearM} м к дороге ${m.deadNear}`); ok(m.par === 0, `seed ${seed}: параллельных улиц ближе ${T.regParM} м ${m.par}`);
+    ok(m.cross === 0, `seed ${seed}: пересечений без узла (метрика) ${m.cross}`); ok(m.shortAv === 0, `seed ${seed}: проспектов < ${T.regAvMinM} м ${m.shortAv}`); }
   if (seed === 7 || seed === 99) { // A11: на въезде шоссе в город проспект проходит под эстакадой (развязка), а не в уровне
     const E = net.edges.filter((e: any) => e.alive), H = E.filter((e: any) => e.type === 2 && e.lv === 1), A = E.filter((e: any) => e.type === 1 && !e.lv); let under = 0;
     const X = (a: any, b: any, c: any, d: any) => { const r = [b.x - a.x, b.z - a.z], s = [d.x - c.x, d.z - c.z], den = r[0] * s[1] - r[1] * s[0]; if (Math.abs(den) < 1e-9) return false; const t = ((c.x - a.x) * s[1] - (c.z - a.z) * s[0]) / den, u = ((c.x - a.x) * r[1] - (c.z - a.z) * r[0]) / den; return t > 0 && t < 1 && u > 0 && u < 1; };

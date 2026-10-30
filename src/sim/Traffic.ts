@@ -120,6 +120,7 @@ export class Traffic {
   }
   /** C (17 §1): режим узла. Авто: проспект × проспект и Y-развилка проспектов 30–60° (17 §5.1) — светофор; улицы — приоритет; переулки и узлы шоссе — без регулирования */
   modeCache = new Int8Array(0); modeVer = -1;
+  sig = new Map<number, { g: number; t: number; u: number }>();
   nodeMode(node: number): number {
     const net = this.world.net; if (this.modeVer !== net.version || this.modeCache.length < net.nodes.length) { this.modeCache = new Int8Array(net.nodes.length * 2).fill(-1); this.modeVer = net.version; }
     const c = this.modeCache[node]; if (c >= 0) return c; const N0 = net.nodes[node]; let m = 3;
@@ -149,6 +150,15 @@ export class Traffic {
     const e0 = net.edges[N0.edges[0]]; const o0 = net.nodes[e0.a === node ? e0.b : e0.a];
     const base = Math.atan2(o0.z - N0.z, o0.x - N0.x); const ang = Math.atan2(o.z - N0.z, o.x - N0.x);
     let rel = ((ang - base) % Math.PI + Math.PI * 2) % Math.PI; const grp = rel < Math.PI / 4 || rel > Math.PI * 3 / 4 ? 0 : 1;
+    const AD = BALANCE.trafficControl.adaptive;
+    if (AD.on) { // Степан: адаптивный светофор — фаза по очередям (minG..maxG), смена при перевесе очереди поперёк, межфазный «все красные»
+      let S = this.sig.get(node); if (!S) { S = { g: (node & 1) as number, t: this.time - AD.minG, u: -1 }; this.sig.set(node, S); }
+      if (S.u !== this.time) { S.u = this.time; const q = [0, 0];
+        for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive) continue; const ox = net.nodes[X.a === node ? X.b : X.a]; let r2 = ((Math.atan2(ox.z - N0.z, ox.x - N0.x) - base) % Math.PI + Math.PI * 2) % Math.PI; const g2 = r2 < Math.PI / 4 || r2 > Math.PI * 3 / 4 ? 0 : 1;
+          const arr = this.lanes[e * 2 + (X.b === node ? 0 : 1)]; if (arr) for (let i = 0; i < arr.length; i++) if (X.len - this.vehs[arr[i]].s < AD.senseM) q[g2]++; }
+        const el = this.time - S.t, own = q[S.g], oth = q[1 - S.g];
+        if (oth > 0 && el >= AD.minG && (own === 0 || el >= AD.maxG || oth > own * AD.ratio + 1)) { S.g = 1 - S.g; S.t = this.time; } }
+      if (this.time - S.t < AD.allRed) return false; return S.g === grp; }
     const cyc = BALANCE.trafficControl.simCycle; const ph = Math.floor((this.time + (node * 7.31) % cyc) / (cyc / 2)) % 2;
     if (ph === grp) return true;
     // QA2 п.3: светофор по вызову — если на поперечном направлении никто не подъезжает (ближе actuatedM), наше направление получает зелёный
@@ -167,11 +177,12 @@ export class Traffic {
       const E = net.edges[l >> 1];
       if (!E.alive) { for (const id of arr) this.remove(this.vehs[id], l, false); arr.length = 0; continue; }
       const nl0 = ROAD_TYPES[E.type].lanes; const len = E.len; const v0b = this.moveSpeed(l, arr.length); const vmax = ROAD_TYPES[E.type].speed; const endNode = (l & 1) ? E.a : E.b;
-      let leave = 0;
+      // QA3 п.3: на многополосном ребре у каждого ряда своя «голова» у стоп-линии (раньше разъезд шёл в один ряд — ёмкость узла вдвое меньше)
+      const kept: number[] = [];
       for (let idx = 0; idx < arr.length; idx++) {
         const v = this.vehs[arr[idx]]; v.t += dt;
         let gap: number, vl = 0; let canGo = false; let next = -1;
-        if (idx > leave) { const L = this.vehs[arr[idx - Math.min(nl0, idx - leave)]]; /* QA2 п.3: на 2-полосном ребре очередь — «в два ряда»: держим дистанцию до машины через одну */ gap = L.s - v.s - VLEN[L.type]; vl = L.v; }
+        const nh = C.multiHead ? nl0 : 1; if (kept.length >= nh) { const L = this.vehs[kept[kept.length - Math.min(nl0, kept.length)]]; /* очередь «в nl0 рядов»: дистанция до машины своего ряда */ gap = L.s - v.s - VLEN[L.type]; vl = L.v; }
         else {
           const toEnd = len - v.s;
           if (v.pi >= v.path.length - 1) { gap = toEnd + 50; canGo = true; }
@@ -195,13 +206,14 @@ export class Traffic {
         v.s += v.v * dt;
         if (v.v < 0.3 || (next >= 0 && !canGo && len - v.s < 3)) v.wait += dt; else v.wait = 0; // QA2 п.3: голова, «ползущая» к стоп-линии, тоже ждёт (иначе не срабатывают вежливый пропуск и протискивание)
         if (v.s >= len) {
-          if (v.pi >= v.path.length - 1 || next === -2) { this.remove(v, l, next !== -2); leave++; continue; }
-          if (canGo) { v.s -= len; v.pi++; moves.push([v, next]); this.laneW[l] = Math.max(0, this.laneW[l] - v.w); leave++; continue; }
+          if (v.pi >= v.path.length - 1 || next === -2) { this.remove(v, l, next !== -2); continue; }
+          if (canGo) { v.s -= len; v.pi++; moves.push([v, next]); this.laneW[l] = Math.max(0, this.laneW[l] - v.w); continue; }
           v.s = len - 0.05;
         }
-        if (v.wait > 120 && idx === leave) { this.remove(v, l, false); leave++; }
+        if (v.wait > 120 && kept.length === 0) { this.remove(v, l, false); continue; }
+        kept.push(v.id);
       }
-      if (leave) arr.splice(0, leave);
+      if (kept.length !== arr.length) { arr.length = 0; for (const id of kept) arr.push(id); }
     }
     for (const [v, nl] of moves) { const arr = this.lanes[nl]; arr.push(v.id); this.laneW[nl] += v.w; this.activeLanes.add(nl); }
   }

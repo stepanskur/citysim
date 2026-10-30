@@ -129,9 +129,9 @@ export class Game {
           const app: Approach[] = []; for (const e of N0.edges) { const E = net.edges[e]; const oi = E.a === id ? E.b : E.a; const o = net.nodes[oi]; if (!E.alive || !o.alive) continue; app.push({ e, dx: (o.x - N0.x) / E.len, dz: (o.z - N0.z) / E.len, type: E.type, len: E.len, alive: true }); }
           const cd = Math.hypot(N0.x - r.cam.position.x, N0.z - r.cam.position.z);
           for (const sp of placeSignals(N0.x, N0.z, app, Math.min(cd, r.ctl.dist))) { if (np >= 1200) break;
-            const y = w.roadY(sp.x, sp.z); d.position.set(sp.x, y, sp.z); d.rotation.set(0, sp.rot, 0); d.scale.setScalar(sp.scale); d.updateMatrix(); P.setMatrixAt(np, d.matrix);
-            const st = signalState(sp.group, id, tt, this.traffic.green(id, sp.e)); const lp = SIGNAL_LAMPS[st];
-            d.position.set(sp.x + (Math.sin(sp.rot) * lp[2] + Math.cos(sp.rot) * lp[0]) * sp.scale, y + lp[1] * sp.scale, sp.z + (Math.cos(sp.rot) * lp[2] - Math.sin(sp.rot) * lp[0]) * sp.scale); d.updateMatrix(); L.setMatrixAt(np, d.matrix); L.setColorAt(np, this.col.setHex(SIGNAL_STATE_COLOR[st])); np++; n++; }
+            const y = w.roadY(sp.x, sp.z); d.position.set(sp.x, y, sp.z); d.rotation.set(0, sp.rot, 0); d.scale.setScalar(sp.scale * BALANCE.render.signalScale); d.updateMatrix(); P.setMatrixAt(np, d.matrix);
+            const st = signalState(sp.group, id, tt, this.traffic.green(id, sp.e)); const lp = SIGNAL_LAMPS[st]; const sk = sp.scale * BALANCE.render.signalScale;
+            d.position.set(sp.x + (Math.sin(sp.rot) * lp[2] + Math.cos(sp.rot) * lp[0]) * sk, y + lp[1] * sk, sp.z + (Math.cos(sp.rot) * lp[2] - Math.sin(sp.rot) * lp[0]) * sk); d.scale.setScalar(sk * BALANCE.render.signalLampK); d.updateMatrix(); L.setMatrixAt(np, d.matrix); L.setColorAt(np, this.col.setHex(SIGNAL_STATE_COLOR[st])); np++; n++; }
         }
       }
       d.scale.set(1, 1, 1);

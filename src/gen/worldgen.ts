@@ -1,6 +1,6 @@
 import { mulberry32, Noise, smooth, clamp, lerp, MinHeap } from '../util';
 import { RoadNet, ROAD_TYPES } from '../world/RoadNet';
-import { spacingOk, unifyClasses, repairNetwork, tidyNetwork, smoothHighwayKinks, fixAvenueDeadEnds } from './netgen';
+import { spacingOk, unifyClasses, repairNetwork, tidyNetwork, smoothHighwayKinks, fixAvenueDeadEnds, closeDeadEndGaps, regularizeNetwork, components } from './netgen';
 import { BALANCE } from '../sim/balance';
 import { LEVEL_DECK, LEVEL_GRADE } from '../world/World';
 import { filletPolyline } from '../../design/road-curves';
@@ -376,7 +376,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
       (a, b) => { const A = net.nodes[a], B = net.nodes[b]; addHighway(gpath(A.x, A.z, B.x, B.z), a, b); });
     // второй проход чистки: починка связности и шоссе-перемычки могли дать новые дубли/тупики
     for (let pass = 0; pass < 2; pass++) { const td = tidyNetwork(net, BALANCE.netgen.specW); genLog.push(`чистка-${pass + 2}: дублей ${td.dup}, тупиков ${td.dead}, сплетений ${td.tangle}`); if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), genLog); }
-    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push('проспектов-тупиков исправлено: ' + fixAvenueDeadEnds(net)); genLog.push('изломов шоссе снято: ' + smoothHighwayKinks(net)); genLog.push(`развязок на въездах шоссе: ${entryInterchanges(net, RAMP)}`); genLog.push(`шоссе: развязок-ромбов ${hwLog.interchange}, узлов в уровне ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}, стыков шоссе ${hwLog.hwMeet}`); (globalThis as any).__netgenLog = genLog; }
+    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push('проспектов-тупиков исправлено: ' + fixAvenueDeadEnds(net)); genLog.push('изломов шоссе снято: ' + smoothHighwayKinks(net)); genLog.push(`развязок на въездах шоссе: ${entryInterchanges(net, RAMP)}`); genLog.push(`тупиков у дорог соединено: ${closeDeadEndGaps(net, BALANCE.netgen.deadEndCloseM)}`); for (let rp = 0; rp < 4; rp++) { const rl: string[] = []; tidyNetwork(net, BALANCE.netgen.specW); fixAvenueDeadEnds(net); if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), rl); rl.push('классы: ' + unifyClasses(net)); regularizeNetwork(net, []); unifyClasses(net); fixAvenueDeadEnds(net); const m = regularizeNetwork(net, rl); unifyClasses(net); if (rp === 3 || (m.close + m.acute + m.deadNear + m.par + m.shortAv === 0 && components(net) === 1)) { genLog.push(...rl); if (components(net) === 1) break; } } genLog.push(`шоссе: развязок-ромбов ${hwLog.interchange}, узлов в уровне ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}, стыков шоссе ${hwLog.hwMeet}`); (globalThis as any).__netgenLog = genLog; }
   progress?.('Зонирование...');
   const road = new Uint8Array(N * N);
   for (const e of net.edges) { if (!e.alive) continue; const A = net.nodes[e.a], B = net.nodes[e.b]; markRoadTiles(N, road, A.x, A.z, B.x, B.z, e.type, ROAD_TYPES[e.type].w); }
@@ -471,6 +471,15 @@ export function entryInterchanges(net: RoadNet, RAMP: number): number {
     // проспекты: дальние концы и направление
     const arms = R.map(e => { const E = net.edges[e]; const o = E.a === n ? E.b : E.a; const O = net.nodes[o]; return { e, o, len: E.len, ux: (O.x - N0.x) / E.len, uz: (O.z - N0.z) / E.len }; });
     if (arms.some(a => a.len < 48)) continue; const oa = arms.map(a => Math.min(off, a.len - 8)); // съезд не дальше конца ребра проспекта
+    if (arms.length === 1 && oa[0] < 40) continue; // QA3 №1: короткий отросток — съезды упираются в чужие улицы
+    { // QA3 №1: съезды не должны пересекать в уровне другие дороги (иначе пересечения без узла)
+      const Q = arms.length === 2 ? arms.map((a, i) => [N0.x + a.ux * oa[i], N0.z + a.uz * oa[i]]) : [[N0.x + arms[0].ux * oa[0], N0.z + arms[0].uz * oa[0]]];
+      const sd = (px: number, pz: number, k: number[]) => (w2.x - w1.x) * (k[1] - w1.z) - (w2.z - w1.z) * (k[0] - w1.x) > 0 === ((w2.x - w1.x) * (pz - w1.z) - (w2.z - w1.z) * (px - w1.x) > 0);
+      const segs: number[][] = []; for (const w of [w1, w2]) { const k = Q.find(k => Q.length === 1 || sd(w === w1 ? w2.x : w1.x, w === w1 ? w2.z : w1.z, k) === false) || Q[0]; segs.push([w.x, w.z, k[0], k[1]]); }
+      const X = (a: number[], b: number[]) => { const rx = a[2] - a[0], rz = a[3] - a[1], sx = b[2] - b[0], sz = b[3] - b[1], den = rx * sz - rz * sx; if (Math.abs(den) < 1e-9) return false; const t = ((b[0] - a[0]) * sz - (b[1] - a[1]) * sx) / den, u = ((b[0] - a[0]) * rz - (b[1] - a[1]) * rx) / den; return t > 0.03 && t < 0.97 && u > 0.01 && u < 0.99; };
+      const skip = new Set<number>([...arms.map(a => a.e), ...H, ...w1.chain, ...w2.chain, w1.e, w2.e]); let bad = false;
+      net.edges.forEach((E, i) => { if (bad || !E.alive || E.lv || skip.has(i)) return; const A = net.nodes[E.a], B = net.nodes[E.b]; for (const sg of segs) if (X(sg, [A.x, A.z, B.x, B.z])) { bad = true; return; } });
+      if (bad) continue; }
     // поднять шоссе: рёбра цепочек → lv 1, граничное ребро — разделить
     const lift = (w: NonNullable<ReturnType<typeof walk>>) => { for (const e of w.chain) { const E = net.edges[e]; const { a, b, type, city } = E; const m = E.m || 0; net.removeEdge(e); net.nodes[a].alive = net.nodes[b].alive = true; net.addEdge(a, b, type, city, 1, m); }
       const E = net.edges[w.e]; const far = E.a === w.from ? E.b : E.a; const { type, city } = E; const m = E.m || 0; let sp: number;
@@ -488,6 +497,6 @@ export function entryInterchanges(net: RoadNet, RAMP: number): number {
     // съезд с каждой стороны шоссе — к точке проспекта по ту же сторону от шоссе (для одностороннего — обе к одной)
     const S1 = net.nodes[s1], S2 = net.nodes[s2]; const side = (k: number) => { const Q = net.nodes[k]; return (S2.x - S1.x) * (Q.z - S1.z) - (S2.z - S1.z) * (Q.x - S1.x); };
     const [qa, qb] = side(q[0]) > 0 ? q : [q[1], q[0]];
-    net.addEdge(s1, qa, 1, N0.city, 0); net.addEdge(s2, qb, 1, N0.city, 0); made++; ((globalThis as any).__entryIC ??= []).push([N0.x, N0.z]); }
+    net.addEdge(s1, qa, 1, N0.city, 0); net.addEdge(s2, qb, 1, N0.city, 0); made++; }
   return made;
 }

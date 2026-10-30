@@ -133,3 +133,14 @@ html.noblur .cs-glass,html.noblur .note,html.noblur #ui #eng-goal{background:rgb
 .cs-subrow{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
 .cs-sublbl{font-size:12px;color:var(--text-dim,#9aa);display:inline-flex;gap:4px;align-items:center}
 .cs-toast{pointer-events:none} /* QA2 п.7: всплывашка не перехватывает клики по карте (второй клик пути/остановки терялся под ней) */
+
+/* QA3: панель «Транспорт» компактнее и сворачивается до шапки — карта справа кликабельна */
+#right{width:330px}#right[style*=block]~#layers,#layers.shift{right:354px}
+#right.min{width:230px;max-height:none;overflow:hidden}#right.min .cs-panel__body{display:none}
+#right .cs-panel__head .mn{margin-left:auto}#right .cs-panel__head .mn+.x{margin-left:0}
+#notes.shift{right:354px}
+/* QA3 №13: панель цели свёрнута по умолчанию, клик по заголовку разворачивает */
+#eng-goal .t{cursor:pointer}
+#eng-goal .t::after{content:" ▴";opacity:.6;font-size:11px}
+#eng-goal:not(.open) .t::after{content:" ▾"}
+#eng-goal:not(.open) > :not(.row):not(.t){display:none}

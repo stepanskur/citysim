@@ -198,6 +198,7 @@ export class Renderer {
     return null;
   }
   // ---------- colors ----------
+  terrMean: number[] | null = null;
   tileColor(i: number, j: number, out: THREE.Color) {
     const w = this.world, N = w.N; i = clamp(i, 0, N - 1); j = clamp(j, 0, N - 1); const k = j * N + i;
     const h = w.tileH(i, j), r = w.resource[k];
@@ -228,7 +229,7 @@ export class Renderer {
     const g = new THREE.PlaneGeometry(w.M, w.M, R, R); g.rotateX(-Math.PI / 2); g.translate(w.M / 2, 0, w.M / 2);
     const pos = g.attributes.position as THREE.BufferAttribute; const col = new Float32Array(pos.count * 3); const c = new THREE.Color();
     for (let v = 0; v < pos.count; v++) { const x = pos.getX(v), z = pos.getZ(v); { const hh = w.hAt(Math.min(x, w.M - 1), Math.min(z, w.M - 1)); pos.setY(v, hh > 0 ? Math.max(hh - 1.5, hh * 0.5) : hh - 1.5); } /* QA2 п.1: низкая суша подложки не уходит под воду (раньше h−1.5 < 0 → «море» вместо суши) */ { const ti = Math.min(w.N - 1, Math.floor(x / TILE)), tj = Math.min(w.N - 1, Math.floor(z / TILE)); this.tileColor(ti, tj, c); const k = tj * w.N + ti; if (this.overlay === 'none' && w.bld[k]) { const zz = w.zone[k]; c.lerp(zz === Z.C ? OV_C : zz === Z.I ? OV_I : OV_R, 0.55); } } /* QA2 п.9: кварталы вдали — мягкий цвет зоны, а не белая «сетка» */ col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b; }
-    void st;
+    void st; if (this.overlay === 'none') blurVertexColors(col, R + 1, R + 1, BALANCE.render.terrainBlurFar); // QA3: подложка без мозаики тайлов
     g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals();
     const mat = this.ovMat; // V8: тот же материал, что у земли и «юбки» — без светлого квадрата
     if (this.overview) { this.scene.remove(this.overview); this.overview.geometry.dispose(); }
@@ -242,7 +243,7 @@ export class Renderer {
     const w = this.world, net = w.net; const pos: number[] = [], col: number[] = []; const c = new THREE.Color();
     const tri = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number) => { pos.push(ax, ay, az, bx, by, bz, cx, cy, cz); for (let q = 0; q < 3; q++) col.push(c.r, c.g, c.b); };
     const Y = (x: number, z: number) => { const h = w.hAt(x, z); if (h <= 0) return 0.3; const ov = Math.max(h - 1.5, h * 0.5); return ov + Math.min(0.4, (h - ov) * 0.6); }; // между подложкой и землёй чанков
-    for (const E of net.edges) { if (!E.alive || (E.type !== 1 && E.type !== 2)) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const hw = ROAD_SPEC.asphalt[E.type] / 2 + 1; const L = Math.max(E.len, 1e-3); const dx = (B.x - A.x) / L, dz = (B.z - A.z) / L; c.setHex(ASPH[E.type]);
+    for (const E of net.edges) { if (!E.alive || (E.type !== 1 && E.type !== 2)) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const hw = ROAD_SPEC.asphalt[E.type] / 2 + 1; const L = Math.max(E.len, 1e-3); const dx = (B.x - A.x) / L, dz = (B.z - A.z) / L; c.setHex(ASPH[0]).lerp(new THREE.Color(ASPH[E.type]), BALANCE.render.farRoadDark); // QA3: издали шоссе не чёрная палка — серый асфальт
       const n = Math.max(1, Math.ceil(L / 40)); for (let s = 0; s < n; s++) { const x0 = A.x + (B.x - A.x) * s / n, z0 = A.z + (B.z - A.z) * s / n, x1 = A.x + (B.x - A.x) * (s + 1) / n, z1 = A.z + (B.z - A.z) * (s + 1) / n; const y0 = Y(x0, z0), y1 = Y(x1, z1);
         tri(x0 - dz * hw, y0, z0 + dx * hw, x1 + dz * hw, y1, z1 - dx * hw, x1 - dz * hw, y1, z1 + dx * hw); tri(x0 - dz * hw, y0, z0 + dx * hw, x0 + dz * hw, y0, z0 - dx * hw, x1 + dz * hw, y1, z1 - dx * hw); }
       for (const N0 of [A, B]) { const y = Y(N0.x, N0.z); for (let k = 0; k < 8; k++) { const a0 = k / 8 * Math.PI * 2, a1 = (k + 1) / 8 * Math.PI * 2; tri(N0.x, y, N0.z, N0.x + Math.cos(a1) * hw, y, N0.z + Math.sin(a1) * hw, N0.x + Math.cos(a0) * hw, y, N0.z + Math.sin(a0) * hw); } } }
@@ -263,7 +264,7 @@ export class Renderer {
       let r = 0, gg = 0, bb = 0; for (const [di, dj] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) { this.tileColor(i + di, j + dj, c); r += c.r; gg += c.g; bb += c.b; }
       col[v] = r / 4; col[v + 1] = gg / 4; col[v + 2] = bb / 4;
     }
-    if (this.overlay === 'none') blurVertexColors(col, nx, nzv, step === 1 ? 0 : 1); // QA v7: вблизи без размытия — резкие границы, деталь даёт шейдер
+    if (this.overlay === 'none') blurVertexColors(col, nx, nzv, step === 1 ? 0 : BALANCE.render.terrainBlurFar); /* QA3: издали без мозаики тайлов */ // QA v7: вблизи без размытия — резкие границы, деталь даёт шейдер
     const idx: number[] = [];
     for (let b = 0; b < nzv - 1; b++) for (let a = 0; a < nx - 1; a++) { const p = b * nx + a; idx.push(p, p + nx, p + 1, p + 1, p + nx, p + nx + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
@@ -313,7 +314,7 @@ export class Renderer {
       const wideAt = (nn: number) => { const L = net.nodes[nn].edges.filter(x => x !== e && net.edges[x].alive); if (L.length !== 1) return 0; const t2 = net.edges[L[0]].type; if (t2 === E.type || t2 === 2 || (net.edges[L[0]].lv || 0) !== lv) return 0; return Math.max(0, ROAD_SPEC.asphalt[t2] / 2 * WMUL[t2] - hw); };
       const dA = far ? 0 : wideAt(E.a), dB = far ? 0 : wideAt(E.b); const NGB = BALANCE.netgen as any; const tl = (d: number) => Math.min(E.len * 0.45, Math.max(NGB.taperMinLen ?? 20, d * 2 * (NGB.taperLenPerM ?? 10)));
       const extra = (sd: number) => (dA > 0 ? dA * Math.max(0, 1 - sd / tl(dA)) : 0) + (dB > 0 ? dB * Math.max(0, 1 - (E.len - sd) / tl(dB)) : 0);
-      this.roadColor(e, E.type, c); if (far && minor && this.overlay === 'none') c.lerp(FARMINOR, 0.75); // V9: вдали второстепенные улицы растворяются в массе кварталов
+      this.roadColor(e, E.type, c); if (far && minor && this.overlay === 'none') c.lerp(FARMINOR, 0.75); if (far && E.type === 2 && this.overlay === 'none') c.lerp(new THREE.Color(ASPH[0]), 1 - BALANCE.render.farRoadDark); /* QA3: шоссе издали — серая полоса */ // V9: вдали второстепенные улицы растворяются в массе кварталов
       const steps = Math.max(1, Math.ceil(E.len / (lv ? 6 : dA || dB ? 5 : 14)));
       // v5 стыки: у тупика ребро начинается на trim площадки-разворота (design/road-joints buildDeadEnd), без белых торцов
       const dTrim = (nn: number) => { if (far || lv || E.type === 2) return 0; const L = net.nodes[nn].edges.filter(x => net.edges[x].alive).length; return L === 1 ? Math.min(E.len * 0.4, deadEndTrim(E.type)) : 0; };
@@ -666,7 +667,11 @@ export class Renderer {
     this.vision += ((this.overlay !== 'none' ? 1 : 0) - this.vision) * 0.2; nightUniforms.uVision.value = this.vision * Math.max(n, NB.visionDay ?? 0);
     nightUniforms.uLift.value *= 1; if (n > 0.5) setNightDistance(this.rig, d); else nightUniforms.uLift.value = 0;
     this.nightComp?.setDist(d);
-    for (const ch of this.chunks.values()) if (ch.lamps) { ch.lamps.update(n, d); ch.lamps.cones.visible = false; if (d < 400) ch.lamps.pools.visible = false; /* вблизи пятна под bloom читаются как шары в воздухе; */ /* конусы под bloom — пятна в воздухе; оставляем пятна на асфальте и плафоны */ }
+    { const on = THREE.MathUtils.smoothstep(n, 0.2, 0.7), RB = BALANCE.render; /* QA3 №12/Степан: асфальт ночью светлее и холоднее земли, разметка читается */
+      for (const [m, k] of [[this.roadMat, 1], [this.farMat, 1], [this.bridgeMat, 0.7], [this.marksMat, 1.6]] as [any, number][]) if (m && m.emissive) m.emissive.setHex(RB.nightRoadEmissive).multiplyScalar(on * k); }
+    if (this.grassMat) { const gm = this.grassMat.uniforms as any; const k = 1 - BALANCE.render.grassNightDim * THREE.MathUtils.smoothstep(n, 0.2, 0.7); /* QA3: трава без освещения ночью «светилась» белыми крапинками */
+      gm.uBase.value.set(GROUND_V5.bladeBase).multiplyScalar(k); gm.uTip.value.set(GROUND_V5.bladeTip).multiplyScalar(k); }
+    for (const ch of this.chunks.values()) if (ch.lamps) { ch.lamps.update(n, d); ch.lamps.cones.visible = false; /* QA3 №12: пятна света на асфальте и вблизи */ { const u = (ch.lamps as any).u.dot; const on = THREE.MathUtils.smoothstep(n, 0.25, 0.7); u.uFade.value = Math.max(u.uFade.value, on * BALANCE.render.lampDotNear); } /* QA3 №12: цепочки фонарей видны и вблизи */ /* вблизи пятна под bloom читаются как шары в воздухе; */ /* конусы под bloom — пятна в воздухе; оставляем пятна на асфальте и плафоны */ }
     const v0 = this.vehMeshes[0], v1 = this.vehMeshes[1]; const on = n > 0.3 && d < 2600;
     if (on) { const a = this.carLights; const c0 = v0.count, c1 = v1.count; for (const o of [a.head, a.tail, a.beam]) { const arr = o.instanceMatrix.array as Float32Array; arr.set((v0.instanceMatrix.array as Float32Array).subarray(0, c0 * 16)); arr.set((v1.instanceMatrix.array as Float32Array).subarray(0, c1 * 16), c0 * 16); o.count = c0 + c1; o.instanceMatrix.needsUpdate = true; } }
     this.carLights.update(on ? n : 0, d);
