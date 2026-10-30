@@ -11,7 +11,7 @@ export type Cmd =
   | { a: 'road'; p: [number, number, number, number]; t: number; lv?: number; m?: number } // этап C: lv уровень, m модули (необязательные)          // ax,az,bx,bz, тип дороги
   | { a: 'rail'; p: [number, number, number, number]; t: number; lv?: number } // этап D: путь (0 ж/д, 1 трамвай, 2 метро), lv уровень
   | { a: 'curve'; p: [number, number, number, number, number, number]; t: number; lv?: number; m?: number } // a, control, b
-  | { a: 'zone'; p: [number, number, number, number]; t: number }          // прямоугольник, Z
+  | { a: 'zone'; p: [number, number, number, number]; t: number; th?: number }          // прямоугольник, Z
   | { a: 'bull'; p: [number, number] }
   | { a: 'ctl'; p: [number, number]; t: number }                          // C: режим узла 0 авто,1 светофор,2 приоритет,3 без рег.
   | { a: 'oneway'; p: [number, number]; d: number }                       // C: 1 по ходу, −1 развернуть, 0 снять

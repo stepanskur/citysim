@@ -12,7 +12,7 @@ export const RAIL = { TRAIN: 0, TRAM: 1, METRO: 2 } as const;
 export const RAIL_TYPES = [{ name: 'Ж/д путь', cost: 1100, w: 6 }, { name: 'Трамвайный путь', cost: 450, w: 4 }, { name: 'Метро', cost: 2600, w: 8 }];
 export class World {
   /** этап H: архитектурный стиль (настройка новой игры, входит в сохранение), темы кварталов {t, e = год застройки}, текущий игровой год */
-  arch: string = 'mixed'; quarters = new Map<number, { t: any; e: number }>(); gameYear = 0;
+  arch: string = 'lateSng'; quarters = new Map<number, { t: any; e: number }>(); gameYear = 0;
   seed: number; sizeIdx: number; N: number; M: number; NV: number;
   heights: Float32Array; resource: Uint8Array; zone: Uint8Array; bld: Uint16Array; kind: Uint8Array; cityOf: Uint8Array; road: Uint8Array; style: Uint8Array;
   landValue: Float32Array; // coarse
@@ -34,13 +34,16 @@ export class World {
   canBuild(x: number, z: number) { return this.sub.ownerAt(x, z) === 0; }
   /** город (агрегат экономики) для тайла: в своём подрегионе — ближайший город того же владельца */
   cityForTile(x: number, z: number) { const o = this.sub.ownerAt(x, z); let best = -1, bd = Infinity; for (const c of this.cities) { const co = this.sub.ownerAt(c.x, c.z); if (o >= 0 && co !== o) continue; const d = Math.hypot(c.x - x, c.z - z) / c.r; if (d < bd) { bd = d; best = c.id; } } return best >= 0 ? best : this.nearestCity(x, z, 99); }
+  /** F1: тема зоны (индекс+1 в ZONE_THEME_UI.order; 0 — не задана → тема по умолчанию) — свойство кисти, без смешения */
+  zoneTheme!: Uint8Array;
+  setZoneTheme(i: number, j: number, t: number) { const k = j * this.N + i; if (!this.zone[k] || this.zoneTheme[k] === t) return false; this.zoneTheme[k] = t; this.markBld(i, j); return true; }
   zoneHook: ((k: number, z: number) => void) | null = null;
   bldHook: ((k: number, ok: number, ol: number, nk: number, nl: number) => void) | null = null;
   setBld(k: number, kind: number, level: number) { const ok = this.kind[k], ol = this.bld[k]; if (ok === kind && ol === level) return; this.kind[k] = level ? kind : 0; this.bld[k] = level; this.bldHook?.(k, ok, ol, this.kind[k], level); this.dirtyBld.add(this.chunkOfTile(k % this.N, (k / this.N) | 0)); }
   dirtyTerrain = new Set<number>(); dirtyRoads = new Set<number>(); dirtyBld = new Set<number>();
   constructor(d: WorldData) {
     this.seed = d.seed; this.sizeIdx = d.sizeIdx; this.N = d.N; this.M = d.N * TILE; this.NV = d.N + 1;
-    this.heights = d.heights; this.resource = d.resource; this.zone = d.zone; this.bld = d.bld; this.kind = d.kind; this.cityOf = d.cityOf; this.road = d.road; this.style = d.style;
+    this.heights = d.heights; this.resource = d.resource; this.zone = d.zone; this.bld = d.bld; this.kind = d.kind; this.cityOf = d.cityOf; this.road = d.road; this.style = d.style; this.zoneTheme = new Uint8Array(d.N * d.N);
     this.cities = d.cities; this.net = RoadNet.deserialize(d.roads);
     this.GN = Math.ceil(this.N / this.GC);
     this.nbrs = (d as any).nbrs || [];

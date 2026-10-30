@@ -313,7 +313,7 @@ export interface BalanceConstants {
   lines: TransitLinesConsts;
   /** этап H (THEMES_SPEC §5): размер квартала темы, м; режим «Смешанный»: радиус исторического центра, м, и его эпоха (лет игры); годы кольца новостроек; после какого года — base; доля вкраплений; шаг квантования этажей */
   themes: { quarterSize: number; coreRadius: number; coreEpoch: number; ringEpoch: [number, number]; lateEpoch: number; mixShare: number; floorStep: number };
-  /** QA2 п.2: подгрузка чанков по бюджету кадра */ render: { chunkOpsPerFrame: number; chunkMsPerFrame: number; farLots: boolean };
+  /** QA2 п.2: подгрузка чанков по бюджету кадра */ render: { chunkOpsPerFrame: number; chunkMsPerFrame: number; farLots: boolean; /** E2: дальность LOD 2/1 от камеры, м; гистерезис, м */ lodNear: number; lodMid: number; lodHyst: number };
   zoning: ZoningBalance;
   trafficControl: TrafficControlBalance;
   construction: ConstructionBalance;
@@ -724,7 +724,7 @@ export const BALANCE: BalanceConstants = {
     oldVehicleBreakdownDaily: 0.01,
   },
   themes: { quarterSize: 120, coreRadius: 1200, coreEpoch: 15, ringEpoch: [10, 40], lateEpoch: 40, mixShare: 0.2, floorStep: 1 },
-  render: { chunkOpsPerFrame: 2, chunkMsPerFrame: 4, farLots: true },
+  render: { chunkOpsPerFrame: 2, chunkMsPerFrame: 4, farLots: true, lodNear: 1300, lodMid: 2400, lodHyst: 150 },
   lines: {
     stopSpacingMin: [250, 250, 600, 1500],
     stopSpacingMax: [800, 800, 2000, 15000],

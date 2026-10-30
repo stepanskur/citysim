@@ -45,7 +45,7 @@ export class Game {
       switch (cmd.a) {
         case 'road': T.sub = cmd.t; T.lv = (cmd as any).lv || 0; T.mods = (cmd as any).m || 0; ok = T.buildRoad(V(p[0], p[1]), V(p[2], p[3]), false); break;
         case 'curve': T.sub = cmd.t; T.lv = (cmd as any).lv || 0; T.mods = (cmd as any).m || 0; T.buildCurve(V(p[0], p[1]), V(p[2], p[3]), V(p[4], p[5]), false); break;
-        case 'zone': T.sub = cmd.t; T.applyZone(V(p[0], p[1]), V(p[2], p[3]), false); break;
+        case 'zone': T.sub = cmd.t; if (cmd.th !== undefined) T.zoneTh = cmd.th; T.applyZone(V(p[0], p[1]), V(p[2], p[3]), false); break;
         case 'rail': T.lv = (cmd as any).lv || 0; ok = T.buildRail(V(p[0], p[1]), V(p[2], p[3]), cmd.t, false); break;
         case 'bull': T.bulldoze(V(p[0], p[1]), false); break;
         case 'ctl': ok = T.applyCtl(p[0], p[1], cmd.t); break; // C: режим узла
@@ -168,7 +168,8 @@ export class Game {
     const r = w.net.serialize();
     const roadsBuf = packArrays([r.nx, r.nz, r.nc, r.nf, r.ea, r.eb, r.et, r.ec, r.el, r.em]); /* этап C: + уровни и модули рёбер */
     const rr = w.rail.serialize(); const railBuf = rr.ea.length ? packArrays([rr.nx, rr.nz, rr.nc, rr.nf, rr.ea, rr.eb, rr.et, rr.ec, rr.el, rr.em]) : null;
-    return { v: 1, arch: w.arch, quarters: [...w.quarters], rail: railBuf ? await gz(railBuf) : undefined, seed: w.seed, size: w.sizeIdx, neighbors: w.nbrs.length, routes: (this as any).routes?.serialize(), actions: this.actions.slice(-5000), tiles: await gz(tiles), roads: await gz(roadsBuf), hIdx: diffIdx, hVal: diffH, eco: this.eco.serialize(), lines: this.transit.serialize(), cam: [this.r.ctl.gx, this.r.ctl.gz, this.r.ctl.gdist] };
+    const zt: number[] = []; for (let i = 0; i < w.zoneTheme.length; i++) if (w.zoneTheme[i]) zt.push(i, w.zoneTheme[i]);
+    return { v: 1, zt, arch: w.arch, quarters: [...w.quarters], rail: railBuf ? await gz(railBuf) : undefined, seed: w.seed, size: w.sizeIdx, neighbors: w.nbrs.length, routes: (this as any).routes?.serialize(), actions: this.actions.slice(-5000), tiles: await gz(tiles), roads: await gz(roadsBuf), hIdx: diffIdx, hVal: diffH, eco: this.eco.serialize(), lines: this.transit.serialize(), cam: [this.r.ctl.gx, this.r.ctl.gz, this.r.ctl.gdist] };
   }
   applySnapshotWorld(s: any) {
     const w = this.world; const N = w.N;
@@ -179,6 +180,7 @@ export class Game {
     if (s._rail) { const b = unpackArrays(s._rail, [Float32Array, Float32Array, Int16Array, Uint8Array, Int32Array, Int32Array, Uint8Array, Int16Array, Int8Array, Uint8Array]); w.rail = RoadNet.deserialize({ nx: b[0], nz: b[1], nc: b[2], nf: b[3], ea: b[4], eb: b[5], et: b[6], ec: b[7], el: b[8], em: b[9] }); w.hookRail(); w.railLift.clear(); }
     w.liftCache.clear(); w.net.onEdgeAdded = e => w.edgeChanged(e, true); w.net.onEdgeRemoved = e => w.edgeChanged(e, false);
     w.road.fill(0); for (const e of w.net.edges) if (e.alive && (e.lv || 0) >= 0) { const A = w.net.nodes[e.a], B = w.net.nodes[e.b]; markRoad(w, A.x, A.z, B.x, B.z, e.type); }
+    if (s.zt) for (let i = 0; i < s.zt.length; i += 2) w.zoneTheme[s.zt[i]] = s.zt[i + 1];
     this.actions = s.actions || [];
   }
   applySnapshotSim(s: any) {

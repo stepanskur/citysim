@@ -1,17 +1,18 @@
 // Этап H: темы зданий Дезигнера (design/models/themes, THEMES_SPEC v4). Выбор темы квартала, тип по классу участка,
 // размер — dimensionsFromLot (центр сдвигается на offsetZ к улице, фасад +Z), fits=false → другой тип или base.
 import { dimensionsFromLot, fallbackKind, type ThemeId, type ThemeKind } from '../../design/models/themes';
-import { THEMES } from '../../design/palette';
+import { THEMES_MUTED as THEMES } from '../../design/palette'; // E: приглушённые темы
 import type { World } from '../world/World';
 import { BALANCE } from '../sim/balance';
+import { ZONE_THEME_UI } from '../../design/yards';
 
 export type Arch = 'mixed' | ThemeId;
 export const ARCH_OPTIONS: { id: Arch; name: string; hint: string }[] = [
-  { id: 'mixed', name: 'Смешанный', hint: 'центр — классика, окраины — панельки, деловой центр — стекло' },
   { id: 'base', name: 'Пастила', hint: 'фирменный стиль v2: пастельные дома и стекло' },
   { id: 'lateSng', name: 'Позднее СНГ', hint: 'панельки, дворы, до 16 эт.' },
   { id: 'russianClassic', name: 'Рус. классика', hint: 'доходные дома, сплошная застройка, до 5 эт.' },
   { id: 'french', name: 'Париж', hint: 'Осман: мансарды, балконы, до 7 эт.' },
+  { id: 'mixed', name: 'Смешанный (старый)', hint: 'не по умолчанию: тема по кварталам; кисть зоны важнее' },
 ];
 export interface Quarter { t: ThemeId; e: number }
 const h = (a: number, b: number, c: number) => { const q = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return q - Math.floor(q); };
@@ -21,7 +22,7 @@ export const quarterKey = (x: number, z: number) => Math.floor(x / QB().quarterS
 /** Тема квартала (фиксируется при первой постройке, хранится в world.quarters вместе с epoch — игровым годом застройки). §5 */
 export function quarterTheme(w: World, x: number, z: number, cls: string): Quarter {
   const W = w as any; if (!W.quarters) W.quarters = new Map<number, Quarter>(); const key = quarterKey(x, z); let q = W.quarters.get(key) as Quarter | undefined; if (q) return q;
-  const arch: Arch = W.arch || 'mixed'; const epoch = Math.floor(W.gameYear || 0);
+  const arch: Arch = W.arch || 'lateSng'; const epoch = Math.floor(W.gameYear || 0);
   let t: ThemeId;
   if (arch !== 'mixed') t = cls === 'ind' ? 'base' : arch;
   else {
@@ -37,7 +38,9 @@ export function quarterTheme(w: World, x: number, z: number, cls: string): Quart
 }
 /** До 20 % «вкраплений» соседней темы на стыке районов (по seed лота). §5.3 */
 export function lotTheme(w: World, x: number, z: number, cls: string): ThemeId {
-  const q = quarterTheme(w, x, z, cls); if (((w as any).arch || 'mixed') !== 'mixed') return q.t;
+  // F1: тема — свойство зоны (кисть), смешения нет; не задана — тема мира (по умолчанию Позднее СНГ)
+  const i = Math.floor(x / 16), j = Math.floor(z / 16), zt = w.zoneTheme?.[j * w.N + i] | 0; if (zt) return ZONE_THEME_UI.order[zt - 1];
+  const q = quarterTheme(w, x, z, cls); if (((w as any).arch || 'lateSng') !== 'mixed') return q.t;
   const S = QB().quarterSize; const r = h(x, z, 3); if (r >= QB().mixShare) return q.t;
   const dirs = [[S, 0], [-S, 0], [0, S], [0, -S]]; const [dx, dz] = dirs[Math.floor(h(z, x, 5) * 4)];
   const n = quarterTheme(w, x + dx, z + dz, cls).t; return n;

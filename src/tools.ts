@@ -175,11 +175,13 @@ export class Tools {
     return { pts, rMin, vMax, fine };
   }
   bezier(a: THREE.Vector3, c: THREE.Vector3, b: THREE.Vector3) { return this.curve(a, c, b).pts; }
+  /** F1: тема кисти зонирования (индекс в ZONE_THEME_UI.order; по умолчанию — Позднее СНГ) */
+  zoneTh = 0;
   applyZone(a: THREE.Vector3, b: THREE.Vector3, record = true) {
     const w = this.g.world; const i0 = Math.floor(Math.min(a.x, b.x) / TILE), i1 = Math.floor(Math.max(a.x, b.x) / TILE), j0 = Math.floor(Math.min(a.z, b.z) / TILE), j1 = Math.floor(Math.max(a.z, b.z) / TILE);
     if ((i1 - i0 + 1) * (j1 - j0 + 1) > 40000) { this.g.ui.toast('Слишком большая область', 'bad'); return; }
-    let n = 0; for (let j = Math.max(0, j0); j <= Math.min(w.N - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(w.N - 1, i1); i++) { if (!w.canBuild((i + 0.5) * TILE, (j + 0.5) * TILE)) continue; if (this.sub && !w.roadAccess(i, j)) continue; if (w.setZone(i, j, this.sub)) n++; }
-    if (n && record) this.g.log({ a: 'zone', p: [a.x, a.z, b.x, b.z], t: this.sub });
+    let n = 0; for (let j = Math.max(0, j0); j <= Math.min(w.N - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(w.N - 1, i1); i++) { if (!w.canBuild((i + 0.5) * TILE, (j + 0.5) * TILE)) continue; if (this.sub && !w.roadAccess(i, j)) continue; const ch = w.setZone(i, j, this.sub); if (this.sub) { const k = j * w.N + i; if (w.zone[k] === this.sub && w.setZoneTheme(i, j, this.zoneTh + 1)) { if (!ch) n++; } } if (ch) n++; }
+    if (n && record) this.g.log({ a: 'zone', p: [a.x, a.z, b.x, b.z], t: this.sub, th: this.zoneTh });
     this.g.ui.toast(`${this.sub ? 'Зонировано' : 'Снято зонирование'}: ${n} участков`, 'good');
   }
   /** C (17 §1, §5): режим узла (sub 0–3) или одностороннее на ребре (sub 4: нет → по ходу → обратно → нет) */

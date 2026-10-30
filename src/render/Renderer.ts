@@ -4,13 +4,32 @@ import { createGroundMaterial, groundUniforms, surfaceWeights, groundSplatColor,
 import { buildJunction, padRadiusFor, roadMaterials, type Arm } from '../../design/road-kit';
 import { ROAD_SPEC, GROUND } from '../../design/palette';
 import { buildBridge, buildTunnelPortal } from '../../design/road-kit-v2';
-import { createTrafficNeonMaterial, nightUniforms } from '../../design/night';
+import { createTrafficNeonMaterial, nightUniforms, placeStreetLamps, StreetLampSet, CarLightSet, buildRoadGlowStrip, createRoadGlowMaterial, applyNightPreset, setNightDistance, patchNightReadable, createNightComposer } from '../../design/night';
+import { createWaterMaterial, shoreDistance } from '../../design/water-material';
+import { buildDeadEnd, END_CAP } from '../../design/road-joints';
+import { layoutYard } from '../../design/yards';
+const JCLS = ['street', 'avenue', 'highway', 'lane'] as const;
+/** длина рукава площадки-разворота (как в buildDeadEnd): где начинается обычное ребро */
+const deadEndTrim = (t: number) => { const cls = JCLS[t]; const Rb = END_CAP.bulbR[cls]; return t === 3 ? 2.25 + 3 + 2.25 : Rb + END_CAP.blend + 4 + Rb * 0.55; };
+import { GRASS, BUSH, createTuftGeometry, createGrassMaterial, scatterGrass, createBushGeometry, createBushMaterial, tickGround } from '../../design/ground';
 import { profileWidthOf } from '../world/roadProfiles';
 const SWC = new THREE.Color(ROAD_SPEC.color.sidewalk);
 const MEDC = new THREE.Color(GROUND.grass); const FARMINOR = new THREE.Color(0xb3b494);
 const ASPH = [0x7a7e8b, 0x575b6c, 0x50546a, 0x868995]; // QA2 п.4: магистрали/шоссе по ROADS_SPEC (palette ROAD_SPEC.color.asphalt), не «чёрные»; // фикс «белых»: улица 0x9a9ea9→0x7a7e8b (на солнце и на светлом настиле читалась белой), иерархия сохранена; // V9: улица/переулок светлые, магистрали тёмные
 const WMUL = [0.9, 1.0, 1.0, 0.85]; // QA2 п.4: ширина проспекта/шоссе ровно ROAD_SPEC.asphalt // V9: магистрали шире, улицы уже (только полотно рёбер)
 /** Перекраска площадки перекрёстка дизайнера в нашу иерархию цветов асфальта. */
+/** v5 тупик под наш профиль: асфальт — цвет класса, бордюр/тротуар опускаются на уровень тротуарной плиты рёбер (без ступеньки на стыке). */
+function fitDeadEnd(g: THREE.BufferGeometry, t: number, yA: number) {
+  const ca = g.attributes.color as THREE.BufferAttribute, pa = g.attributes.position as THREE.BufferAttribute; const as = new THREE.Color(0x4a4e63), dst = new THREE.Color(ASPH[t]), tc = new THREE.Color(), sw = new THREE.Color(ROAD_SPEC.color.sidewalk);
+  for (let i = 0; i < ca.count; i++) { tc.setRGB(ca.getX(i), ca.getY(i), ca.getZ(i)); const asph = pa.getY(i) <= yA + 0.01 && tc.r < 0.6; // асфальт — нижний слой; стенка бордюра светлая
+    if (asph) ca.setXYZ(i, dst.r, dst.g, dst.b); else { ca.setXYZ(i, sw.r, sw.g, sw.b); if (pa.getY(i) > yA + 0.01) pa.setY(i, yA + ROAD_SPEC.y.sidewalk - ROAD_SPEC.y.asphalt); } }
+}
+/** design/night patchNightReadable без конфликта имён: его Object.assign(nightUniforms) перетирал uFar (vec4) материала земли — подставляем только uLift/uVision. */
+function patchNight<T extends THREE.Material>(m: T): T {
+  const tmp = patchNightReadable(new THREE.MeshLambertMaterial()); const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => { prev?.call(m, sh, r); const keep = { ...sh.uniforms }; tmp.onBeforeCompile(sh, r); for (const k of Object.keys(nightUniforms)) if (k !== 'uLift' && k !== 'uVision') { if (k in keep) sh.uniforms[k] = keep[k]; else delete sh.uniforms[k]; } };
+  const pk = m.customProgramCacheKey.bind(m); m.customProgramCacheKey = () => pk() + '|night'; return m;
+}
 function recolorJunction(g: THREE.BufferGeometry, mainType: number) {
   const ca = g.attributes.color as THREE.BufferAttribute; const tc = new THREE.Color(); const src = [ROAD_SPEC.color.pad, ...ROAD_SPEC.color.asphalt].map(h => new THREE.Color(h)); const dst = [ASPH[mainType], ...ASPH].map(h => new THREE.Color(h));
   for (let i = 0; i < ca.count; i++) { tc.setRGB(ca.getX(i), ca.getY(i), ca.getZ(i)); for (let k = 0; k < src.length; k++) if (Math.abs(tc.r - src[k].r) + Math.abs(tc.g - src[k].g) + Math.abs(tc.b - src[k].b) < 0.004) { ca.setXYZ(i, dst[k].r, dst[k].g, dst[k].b); break; } }
@@ -43,7 +62,7 @@ import { RailView } from './RailView';
 const h01 = (a: number, b: number) => { const q = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return q - Math.floor(q); };
 import { lotTheme, themedForLot, wallColor } from './Themes';
 import { ModelLibrary, createVehicle, VEHICLE_LENGTH } from '../../design/models';
-import { BUILD, ROADS, TERRAIN } from '../../design/palette';
+import { BUILD_MUTED as BUILD, ROADS, TERRAIN, GROUND_V5, mute } from '../../design/palette'; // E (HANDOFF_v5 ч.3): приглушённая палитра домов
 const FIELD_C = [GROUND.field, GROUND.fieldPlowed, TERRAIN.field2 ?? GROUND.field].map(h => new THREE.Color(h));
 function whiteColors(g: THREE.BufferGeometry) { const n = g.attributes.position.count; g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(1), 3)); }
 import { World } from '../world/World';
@@ -60,7 +79,7 @@ export const QUALITIES: Quality[] = [
   { name: 'Среднее', shadows: true, pixelRatio: 1, viewDist: 6000, bldDist: 3500, agentCap: 4000 },
   { name: 'Высокое', shadows: true, pixelRatio: 1.5, viewDist: 10000, bldDist: 6000, agentCap: 8000 },
 ];
-interface Chunk { id: number; terrain?: THREE.Mesh; tStep: number; roads?: THREE.Mesh; bridges?: THREE.Mesh; rStep?: number; marks?: THREE.Mesh; blds: THREE.Object3D[]; bDetail: number }
+interface Chunk { lamps?: StreetLampSet; glow?: THREE.Mesh; id: number; terrain?: THREE.Mesh; tStep: number; roads?: THREE.Mesh; bridges?: THREE.Mesh; rStep?: number; marks?: THREE.Mesh; blds: THREE.Object3D[]; bDetail: number }
 
 const C = (h: number) => new THREE.Color(h);
 const OV_R = new THREE.Color(0xb08f7c), OV_C = new THREE.Color(0x8d97ad), OV_I = new THREE.Color(0xa59670);
@@ -78,6 +97,7 @@ export class Renderer {
   terrainMat: THREE.MeshLambertMaterial; roadMat: THREE.MeshLambertMaterial; bldMat: THREE.MeshLambertMaterial; plainMat: THREE.MeshLambertMaterial;
   geoBox: THREE.BoxGeometry; geoRoof: THREE.ConeGeometry; geoCyl: THREE.CylinderGeometry; geoTree: THREE.ConeGeometry;
   night = { value: 0 };
+  carLights!: CarLightSet; nightComp: ReturnType<typeof createNightComposer> | null = null; lampPoleMat = createStyledMaterial(); glowMats = new Map<string, THREE.ShaderMaterial>(); vision = 0;
   vehMeshes: THREE.InstancedMesh[] = []; lib!: ModelLibrary;
   lightMesh: THREE.InstancedMesh; signalPoles!: THREE.InstancedMesh;
   lineGroup = new THREE.Group(); toolGroup = new THREE.Group();
@@ -127,8 +147,8 @@ export class Renderer {
     for (const g of [this.geoBox, this.geoRoof, this.geoCyl, this.geoTree]) whiteColors(g);
     this.lib = new ModelLibrary();
     const wg = new THREE.PlaneGeometry(world.M * 3, world.M * 3); wg.rotateX(-Math.PI / 2); wg.translate(world.M / 2, 0, world.M / 2);
-    this.water = new THREE.Mesh(wg, new THREE.MeshLambertMaterial({ color: GROUND.water, transparent: true, opacity: 0.86 }));
-    this.water.receiveShadow = true; this.water.renderOrder = 1; this.scene.add(this.water);
+    this.water = new THREE.Mesh(wg, this.makeWater()); wg.translate(0, -0.05, 0); // E6 (v5 ч.4): шейдер воды design/water-material, уровень −0.05 (нет мерцания кромки)
+    this.water.renderOrder = 1; this.scene.add(this.water);
     this.ctl = new CameraCtl(this.cam, canvas, (x, z) => world.hAt(x, z), world.M, (cx, cy) => this.pickScreen(cx, cy));
     const c0 = world.cities[0]; this.ctl.jump(c0.x, c0.z, Math.min(2500, c0.r * 1.3)); this.ctl.tx = c0.x; this.ctl.tz = c0.z; this.ctl.dist = this.ctl.gdist;
     // vehicles: car, truck, bus, tram, metro, train
@@ -144,6 +164,10 @@ export class Renderer {
       m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(caps[i] * 3), 3);
       this.vehMeshes.push(m); this.scene.add(m);
     });
+    // D (v5, NIGHT_SPEC): ночь, в которой можно строить — подъём альбедо / «ночное видение» слоёв на основных материалах, фары машин, bloom
+    for (const m of [this.terrainMat, this.roadMat, this.bldMat, vehMat] as THREE.Material[]) patchNight(m);
+    this.carLights = new CarLightSet(caps[0] + caps[1]); for (const o of [this.carLights.head, this.carLights.tail, this.carLights.beam]) { o.geometry.rotateY(Math.PI / 2); o.geometry.translate(0, 0.15, 0); } this.scene.add(this.carLights.group);
+    try { this.nightComp = createNightComposer(this.renderer, this.scene, this.cam); } catch { this.nightComp = null; }
     const lg = new THREE.BoxGeometry(1, 0.06, 0.45);
     this.lightMesh = new THREE.InstancedMesh(lg, new THREE.MeshBasicMaterial({ color: 0xffffff }), 3000); this.lightMesh.count = 0; this.lightMesh.frustumCulled = false;
     this.lightMesh = new THREE.InstancedMesh(this.lib.get({ type: 'prop', kind: 'signalLamp' } as any, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), 1200); this.lightMesh.count = 0; this.lightMesh.frustumCulled = false;
@@ -162,7 +186,7 @@ export class Renderer {
     this.resize(); window.addEventListener('resize', () => this.resize());
   }
   setQuality(q: Quality) { this.q = q; document.documentElement.classList.toggle('noblur', q.name === 'Низкое'); /* этап A: без backdrop-filter на низком */ this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pixelRatio)); this.renderer.shadowMap.enabled = q.shadows; this.sun.castShadow = q.shadows; this.scene.traverse(o => { if ((o as any).material) ((o as any).material as THREE.Material).needsUpdate = true; }); this.resize(); }
-  resize() { const w = this.canvas.clientWidth || innerWidth, h = this.canvas.clientHeight || innerHeight; this.renderer.setSize(w, h, false); this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
+  resize() { const w = this.canvas.clientWidth || innerWidth, h = this.canvas.clientHeight || innerHeight; this.renderer.setSize(w, h, false); this.nightComp?.composer.setSize(w, h); this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
   // ---------- picking ----------
   ray = new THREE.Raycaster(); ndc = new THREE.Vector2();
   pickScreen(cx: number, cy: number): THREE.Vector3 | null {
@@ -181,7 +205,7 @@ export class Renderer {
     else { // FIX_VISUALS §2: смесь покрытий по физическим признакам, а не «цвет тайла»
       const kd = w.kind[k]; const urban = w.bld[k] && kd !== K.PARK && kd !== K.EXTRACT ? (kd === K.RES && w.style[k] === 0 ? 0.55 : 1) : w.cityOf[k] && w.road[k] ? 0.6 : 0;
       groundSplatColor(surfaceWeights(Math.max(0, h), w.tileSlope(i, j), r === RES.FOREST ? 1 : 0, r === RES.FERTILE || (kd === K.EXTRACT && r === RES.FERTILE) ? 1 : 0, urban), out);
-      if (kd === K.PARK) out.setHex(GROUND.yardGrass);
+      out.setHex(mute(out.getHex())); // E (v5 ч.3): приглушённая земля; парк больше не красится по вершинам (давало ромбы/полосы «подложки»)
       if (kd === K.EXTRACT && (r === RES.FERTILE || !r)) { /* P2 п.21: поля — сплатом рельефа (GROUND.field/fieldPlowed), полосы 3×1 участка, без плит */ const hq = hash2(Math.floor(i / 3), j, 19); out.lerp(FIELD_C[Math.floor(hq * 3)], 0.7); }
     }
     const z = w.zone[k];
@@ -276,7 +300,7 @@ export class Renderer {
     const w = this.world, net = w.net; const cs = CHUNK * TILE; const cx = (ch.id % w.chunksN) * cs, cz = Math.floor(ch.id / w.chunksN) * cs;
     const pos: number[] = [], col: number[] = [], idx: number[] = []; const c = new THREE.Color();
     const bridgeG: THREE.BufferGeometry[] = []; // этап C: мосты над водой (design/road-kit-v2 buildBridge, ширина по модульному профилю)
-    const nodesDone = new Set<number>(); const jBase: THREE.BufferGeometry[] = [], jMarks: THREE.BufferGeometry[] = [];
+    const lampsY: [any, number][] = [], glowG: THREE.BufferGeometry[] = []; const nodesDone = new Set<number>(); const jBase: THREE.BufferGeometry[] = [], jMarks: THREE.BufferGeometry[] = [];
     for (const e of net.edgesNear(cx + cs / 2, cz + cs / 2, cs * 0.75)) {
       const E = net.edges[e]; if (!E.alive) continue; const A = net.nodes[E.a], B = net.nodes[E.b];
       if (w.chunkOfPos((A.x + B.x) / 2, (A.z + B.z) / 2) !== ch.id) continue;
@@ -291,9 +315,15 @@ export class Renderer {
       const extra = (sd: number) => (dA > 0 ? dA * Math.max(0, 1 - sd / tl(dA)) : 0) + (dB > 0 ? dB * Math.max(0, 1 - (E.len - sd) / tl(dB)) : 0);
       this.roadColor(e, E.type, c); if (far && minor && this.overlay === 'none') c.lerp(FARMINOR, 0.75); // V9: вдали второстепенные улицы растворяются в массе кварталов
       const steps = Math.max(1, Math.ceil(E.len / (lv ? 6 : dA || dB ? 5 : 14)));
+      // v5 стыки: у тупика ребро начинается на trim площадки-разворота (design/road-joints buildDeadEnd), без белых торцов
+      const dTrim = (nn: number) => { if (far || lv || E.type === 2) return 0; const L = net.nodes[nn].edges.filter(x => net.edges[x].alive).length; return L === 1 ? Math.min(E.len * 0.4, deadEndTrim(E.type)) : 0; };
+      if (!far && !lv && E.len > 20) { const cls = JCLS[E.type]; const yE = w.roadY((A.x + B.x) / 2, (A.z + B.z) / 2); const tr = (nn: number) => net.nodes[nn].edges.filter(x => net.edges[x].alive).length >= 3 ? Math.max(8, this.padR(nn) + 2) : 4;
+        try { for (const l of placeStreetLamps([{ x: A.x, z: A.z }, { x: B.x, z: B.z }], cls, { trimStart: tr(E.a), trimEnd: tr(E.b) })) lampsY.push([l, w.roadY(l.x, l.z) - 0.1]); } catch { /* */ }
+        if (E.type === 1 || E.type === 2) glowG.push(buildRoadGlowStrip([{ x: A.x, z: A.z }, { x: B.x, z: B.z }], cls, yE + 0.12)); }
+      const tA = dTrim(E.a), tB = dTrim(E.b); const U = (s: number) => (tA + (E.len - tA - tB) * s / steps) / E.len;
       if (E.type !== 2 && !far && lv <= 0) { // sidewalks (на эстакаде — нет: тротуар шире настила висел в воздухе белой полосой)
         const sw = hw + ROAD_SPEC.curbW + ROAD_SPEC.sidewalk[E.type]; const qx = -dz * sw, qz = dx * sw; const b1 = pos.length / 3;
-        for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.sidewalk - 0.1; const k3 = 1 + extra(E.len * s / steps) / sw; pos.push(x + qx * k3, y, z + qz * k3, x - qx * k3, y, z - qz * k3); col.push(SWC.r, SWC.g, SWC.b, SWC.r, SWC.g, SWC.b); }
+        for (let s = 0; s <= steps; s++) { const u = U(s); const x = A.x + (B.x - A.x) * u, z = A.z + (B.z - A.z) * u; const y = Y(x, z, E.len * u) + ROAD_SPEC.y.sidewalk - 0.1; const k3 = 1 + extra(E.len * u) / sw; pos.push(x + qx * k3, y, z + qz * k3, x - qx * k3, y, z - qz * k3); col.push(SWC.r, SWC.g, SWC.b, SWC.r, SWC.g, SWC.b); }
         for (let s = 0; s < steps; s++) { const p = b1 + s * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
       }
       for (let s = 0; s < steps && !lv; s++) { // bridge sides
@@ -304,7 +334,7 @@ export class Renderer {
           idx.push(b3, b3 + 2, b3 + 1, b3 + 1, b3 + 2, b3 + 3, b3, b3 + 1, b3 + 2, b3 + 1, b3 + 3, b3 + 2); }
       }
       const base = pos.length / 3;
-      for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.asphalt - 0.1 + E.type * 0.005; const k2 = 1 + extra(E.len * s / steps) / hw; pos.push(x + px * k2, y, z + pz * k2, x - px * k2, y, z - pz * k2); col.push(c.r, c.g, c.b, c.r, c.g, c.b); }
+      for (let s = 0; s <= steps; s++) { const u = U(s); const x = A.x + (B.x - A.x) * u, z = A.z + (B.z - A.z) * u; const y = Y(x, z, E.len * u) + ROAD_SPEC.y.asphalt - 0.1 + E.type * 0.005; const k2 = 1 + extra(E.len * u) / hw; pos.push(x + px * k2, y, z + pz * k2, x - px * k2, y, z - pz * k2); col.push(c.r, c.g, c.b, c.r, c.g, c.b); }
       for (let s = 0; s < steps; s++) { const p = base + s * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
       // V8: проспект — зелёный разделитель, шоссе/проспект — белые краевые линии
       const deg = (nn: number) => net.nodes[nn].edges.filter(x => net.edges[x].alive).length; const cA = deg(E.a) >= 3 && !far ? Math.min(E.len * 0.45, this.padR(E.a)) : 0, cB = deg(E.b) >= 3 && !far ? Math.min(E.len * 0.45, this.padR(E.b)) : 0; // B1: разметка/разделитель не заходят на площадку перекрёстка (белые полосы поперёк стыка)
@@ -341,6 +371,8 @@ export class Renderer {
           try { const J = buildJunction(N0.x, N0.z, arms, y0); recolorJunction(J.base, Math.max(...arms.map(a => a.type === 3 ? -1 : a.type)) < 0 ? 3 : Math.max(...arms.map(a => a.type === 3 ? -1 : a.type))); jBase.push(cleanJunction(J.base, arms, N0.x, N0.z, R)); const mk = J.marks.attributes.position as THREE.BufferAttribute; for (let i = 0; i < mk.count; i++) mk.setY(i, mk.getY(i) + 0.02); jMarks.push(J.marks); } catch { /* вырожденный узел — пропуск */ }
           continue;
         }
+        if (live.length === 1 && !far) { const E1 = net.edges[live[0]]; if (E1.type !== 2 && !(E1.lv || 0)) { const o = net.nodes[E1.a === nn ? E1.b : E1.a];
+          try { const J = buildDeadEnd({ x: N0.x, z: N0.z }, { dx: (o.x - N0.x) / E1.len, dz: (o.z - N0.z) / E1.len, cls: JCLS[E1.type] }, E1.type === 3 ? 'round' : 'bulb', y0 + ROAD_SPEC.y.asphalt - 0.1 + 0.1); fitDeadEnd(J.base, E1.type, y0 + 0.1 - 0.1 + ROAD_SPEC.y.asphalt - 0.1 + 0.1); jBase.push(J.base); continue; } catch { /* вырожденный */ } } }
         let r = 0, rs = 0, mt = 0, me = N0.edges[0]; for (const e2 of live) { const t = net.edges[e2].type; r = Math.max(r, ROAD_SPEC.asphalt[t] / 2); rs = Math.max(rs, ROAD_SPEC.asphalt[t] / 2 + ROAD_SPEC.curbW + ROAD_SPEC.sidewalk[t]); if (t >= mt) { mt = t; me = e2; } }
         this.roadColor(me, mt, c); if (this.overlay === 'traffic') c.setHex(0x8a8a8a);
         const disc = (rad: number, y: number, cr: number, cg: number, cb: number) => { const b0 = pos.length / 3; pos.push(N0.x, y, N0.z); col.push(cr, cg, cb);
@@ -360,6 +392,11 @@ export class Renderer {
     if (ch.bridges) { this.scene.remove(ch.bridges); ch.bridges.geometry.dispose(); ch.bridges = undefined; }
     if (bridgeG.length) { const bg = mergeGeometries(bridgeG.map(g => g.index ? g.toNonIndexed() : g)); if (bg) { ch.bridges = new THREE.Mesh(bg, this.bridgeMat); ch.bridges.castShadow = ch.bridges.receiveShadow = true; this.scene.add(ch.bridges); } }
     if (ch.marks) { this.scene.remove(ch.marks); ch.marks.geometry.dispose(); ch.marks = undefined; }
+    this.dropLamps(ch);
+    if (lampsY.length) { const set = new StreetLampSet(lampsY.map(q => q[0]), this.lampPoleMat, 0); const M = new THREE.Matrix4(), T = new THREE.Matrix4();
+      lampsY.forEach(([, y], i) => { T.makeTranslation(0, y, 0); for (const o of [set.poles, set.pools, set.cones]) { o.getMatrixAt(i, M); M.premultiply(T); o.setMatrixAt(i, M); } (set.dots.geometry.attributes.position as THREE.BufferAttribute).setY(i, (set.dots.geometry.attributes.position as THREE.BufferAttribute).getY(i) + y); });
+      ch.lamps = set; this.scene.add(set.group); }
+    if (glowG.length) { const gg = mergeGeometries(glowG); glowG.forEach(x => x.dispose()); if (gg) { ch.glow = new THREE.Mesh(gg, this.glowMat('avenue')); ch.glow.renderOrder = 6; ch.glow.frustumCulled = false; this.scene.add(ch.glow); } }
     if (jMarks.length) { const mg = mergeGeometries(jMarks); jMarks.forEach(x => x.dispose()); if (mg) { ch.marks = new THREE.Mesh(mg, this.marksMat); ch.marks.renderOrder = ROAD_SPEC.renderOrder.marking; this.scene.add(ch.marks); } }
     if (G !== g) g.dispose();
     const g2 = G;
@@ -409,15 +446,32 @@ export class Renderer {
         farSet(i, j, w.hAt(x, z) - 0.3, sm <= 2 && kd === K.RES ? 3.5 : hgt, col); continue; // V9: тайлы смыкаются в сплошную массу района
       }
       if (kd === K.RES || kd === K.COM || kd === K.IND) { // жилые/коммерческие/промышленные — по участкам (Lots); внутренность квартала — двор
-        if (detail >= 2 && kd !== K.IND && this.lots && !this.lots.occ.has(Math.floor(x / 4) * 100003 + Math.floor(z / 4)) && !w.road[k]) {
-          const y = w.hAt(x, z) - 0.2; const hq = hash2(i, j, 77);
-          if (hq < 0.22) boxes.push([x, y, z, 9, 2.4, 5, 0, BUILD.concrete]); // гаражи/сараи
-          else if (hq < 0.34) boxes.push([x, y, z, 10, 0.25, 10, 0, 0xd9c7a0]); // детская площадка
-          for (let q = 0; q < 2; q++) if (hash2(i, j, 80 + q) < 0.75) { const s2 = 2 + hash2(i, j, 82 + q) * 1.5; trees.push([x + (hash2(i, j, 84 + q) - 0.5) * 11, y, z + (hash2(i, j, 86 + q) - 0.5) * 11, s2, s2 * 2.4, s2, 0, pick([0x5ea845, 0x4c9a48, 0x77b84e], hash2(i, j, 88 + q))]); }
+        const isYard = (ii: number, jj: number) => { if (ii < 0 || jj < 0 || ii >= w.N || jj >= w.N) return false; const kk = jj * w.N + ii, kd2 = w.kind[kk]; const xx = (ii + 0.5) * TILE, zz = (jj + 0.5) * TILE;
+          return (kd2 === K.RES || kd2 === K.COM) && w.chunkOfPos(xx, zz) === ch.id && !w.road[kk] && !this.lots!.occ.has(Math.floor(xx / 4) * 100003 + Math.floor(zz / 4)); };
+        const YS: Set<number> = (boxes as any)._ys ??= new Set<number>();
+        if (detail >= 2 && kd !== K.IND && this.lots && !YS.has(k) && isYard(i, j)) { // F3: двор квартала — design/yards layoutYard один раз на связную область
+          const comp: number[] = [], st = [k]; YS.add(k); let i0 = i, i1 = i, j0 = j, j1 = j;
+          while (st.length && comp.length < 64) { const kk = st.pop()!; comp.push(kk); const ii = kk % w.N, jj = (kk / w.N) | 0; i0 = Math.min(i0, ii); i1 = Math.max(i1, ii); j0 = Math.min(j0, jj); j1 = Math.max(j1, jj);
+            for (const [a2, b2] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n2 = (jj + b2) * w.N + ii + a2; if (!YS.has(n2) && isYard(ii + a2, jj + b2)) { YS.add(n2); st.push(n2); } } }
+          const cset = new Set(comp); const bw = (i1 - i0 + 1) * TILE - 4, bd = (j1 - j0 + 1) * TILE - 4, cx0 = (i0 + i1 + 1) / 2 * TILE, cz0 = (j0 + j1 + 1) / 2 * TILE;
+          const th = lotTheme(w, cx0, cz0, 'panel'); const items = layoutYard(th, bw, bd, (hash2(i0, j0, 91) * 1e9) | 0);
+          for (const it of items) { const ix = cx0 + it.x, iz = cz0 + it.z; const kk = Math.floor(iz / TILE) * w.N + Math.floor(ix / TILE); if (!cset.has(kk) && it.kind !== 'path') continue; const yy = w.hAt(ix, iz) - 0.2;
+            const iw = Math.min(it.w ?? 1, bw), id2 = Math.min(it.d ?? 1, bd), rot = it.rot ?? 0;
+            if (it.kind === 'path') boxes.push([ix, yy, iz, iw, 0.32, id2, rot, 0xcfc6b4]);
+            else if (it.kind === 'parking') boxes.push([ix, yy, iz, iw, 0.3, id2, 0, 0x7a7e8a]);
+            else if (it.kind === 'playground') boxes.push([ix, yy, iz, iw, 0.35, id2, 0, 0xd9c7a0]);
+            else if (it.kind === 'garage') boxes.push([ix, yy, iz, iw, 2.6, id2, 0, BUILD.concrete]);
+            else if (it.kind === 'fountain') boxes.push([ix, yy, iz, 3, 0.9, 3, 0, 0xbfd8e0]);
+            else if (it.kind === 'bench') boxes.push([ix, yy, iz, 1.6, 0.7, 0.5, rot, 0x8a6a4a]);
+            else if (it.kind === 'bins') boxes.push([ix, yy, iz, 3, 1.2, 1.5, 0, 0x6a8a6a]);
+            else if (it.kind === 'tree') { const s2 = 2 + hash2(ix | 0, iz | 0, 5) * 1.5; trees.push([ix, yy, iz, s2, s2 * 2.4, s2, 0, pick([0x5ea845, 0x4c9a48, 0x77b84e], hash2(ix | 0, iz | 0, 6))]); }
+            else if (it.kind === 'bush') trees.push([ix, yy, iz, 1.2, 1.1, 1.2, 0, 0x5a8f45]);
+          }
         }
         continue;
       }
-      const y = Math.min(w.H(i, j), w.H(i + 1, j), w.H(i, j + 1), w.H(i + 1, j + 1)) - 0.2;
+      const hc4 = [w.H(i, j), w.H(i + 1, j), w.H(i, j + 1), w.H(i + 1, j + 1)]; const y = Math.max(...hc4) - 0.05, yLo = Math.min(...hc4) - 0.3; // E5: дом по верхнему углу + цоколь, не «врастает»
+      if (kd !== K.PARK && kd !== K.EXTRACT && w.bld[k] && y - yLo > 0.5) boxes.push([x, yLo, z, 13, y - yLo + 0.05, 13, 0, BUILD.plinth]);
       if (detail < 1 && L < 3 && kd !== K.PORT) continue;
       // ориентация: фасад (+Z модели) к ближайшей улице, ось вдоль неё
       let rot = 0, front = 7.5, hwRoad = 4.5; const ne = w.net.nearestEdge(x, z, 30);
@@ -467,7 +521,7 @@ export class Renderer {
         else if (r === RES.ORE) { boxes.push([x, y, z, 12, 6, 12, rot, BUILD.indWalls[1]]); boxes.push([x + 3, y + 6, z, 3, 12, 3, rot, BUILD.chimney]); }
         else { boxes.push([x, y, z, 4, 3, 10, rot, BUILD.indRoof[1]]); cyls.push([x, y, z - 5, 2, 7, 2, 0, BUILD.indAccent]); }
       } else if (kd === K.WAREHOUSE) { const P = place(15.5, 15, 1); if (detail >= 2) addM('warehouse#0', [P.ox, y, P.oz, P.w2 / 36, 1, P.d2 / 22, rot, 0xffffff]); else boxes.push([P.ox, y, P.oz, P.w2, 9, P.d2, rot, 0xb0b8c0]); }
-      else if (kd === K.PARK) { boxes.push([x, y, z, 16, 0.4, 16, rot, 0x7fb352]); if (detail >= 2) { const n = 2 + Math.floor(hv * 3); for (let q = 0; q < n; q++) { const s2 = 2 + hash2(i, j, 30 + q) * 2; trees.push([x + (hash2(i, j, 31 + q) - 0.5) * 11, y, z + (hash2(i, j, 32 + q) - 0.5) * 11, s2, s2 * 2.4, s2, 0, pick([0x5ea845, 0x4c9a48, 0x77b84e], hash2(i, j, 33 + q))]); } } }
+      else if (kd === K.PARK) { /* E (s06): плита парка убрана */ if (detail >= 2) { const n = 2 + Math.floor(hv * 3); for (let q = 0; q < n; q++) { const s2 = 2 + hash2(i, j, 30 + q) * 2; trees.push([x + (hash2(i, j, 31 + q) - 0.5) * 11, y, z + (hash2(i, j, 32 + q) - 0.5) * 11, s2, s2 * 2.4, s2, 0, pick([0x5ea845, 0x4c9a48, 0x77b84e], hash2(i, j, 33 + q))]); } } }
       else if (kd === K.STATION) { if (detail >= 2) addM('station#0', [x, y, z, 15 / 48, 1, 15 / 22, rot, 0xffffff]); else boxes.push([x, y, z, 15, 6, 12, rot, BUILD.stationWalls]); }
       else if (kd === K.PORT) { boxes.push([x, y, z, 16, 2, 16, 0, 0x6a6a6a]); boxes.push([x - 3, y + 2, z, 3, 22, 3, 0, 0xd9a03c]); boxes.push([x + 2, y + 22, z, 16, 2, 2, 0, 0xd9a03c]); boxes.push([x + 4, y + 2, z + 4, 6, 5, 6, 0, 0x2f7fbf]); boxes.push([x + 4, y + 2, z - 4, 6, 5, 6, 0, 0xbf3f2f]); }
     }
@@ -485,7 +539,8 @@ export class Renderer {
           if (L.x < x0 || L.x >= x0 + cs || L.z < z0 || L.z >= z0 + cs) continue;
           const k = L.k; if (!w.bld[k] || this.lots.cls(k)?.cls !== L.cls) continue;
           const ne = w.net.nearestEdge(L.x, L.z, 30); if (ne && ne.d < ROAD_TYPES[w.net.edges[ne.e].type].w / 2 + Math.min(L.w, L.d) / 2 - 1) continue; // новая дорога прошла по участку
-          const i = k % N, j = (k / N) | 0, kd = w.kind[k]; const y = w.hAt(L.x, L.z) - 0.3; const rot = L.rot;
+          const i = k % N, j = (k / N) | 0, kd = w.kind[k]; const rot = L.rot; const cr = Math.cos(rot), sr = Math.sin(rot); let yHi = -1e9, yLo2 = 1e9; for (const [u, v] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const hx = u * L.w * 0.42, hz = v * L.d * 0.42; const hh = w.hAt(L.x + hx * cr + hz * sr, L.z - hx * sr + hz * cr); yHi = Math.max(yHi, hh); yLo2 = Math.min(yLo2, hh); } const y = yHi - 0.05; // E5: верхний угол пятна
+          if (yHi - yLo2 > 0.3) boxes.push([L.x, yLo2 - 0.3, L.z, L.w * 0.86, yHi - yLo2 + 0.3, L.d * 0.86, rot, BUILD.plinth]); // цоколь
           const hv = h01(L.x, L.z), hv2 = h01(L.z, L.x + 7);
           const dist = (key: number) => hash2(Math.floor(i / 5), Math.floor(j / 5), key);
           const Lv = Math.max(1, Math.round(smoothL(i, j, kd) * 0.75 + w.bld[k] * 0.25) + (L.corner ? 1 : 0) + (hv < 0.15 ? -1 : hv > 0.88 ? 1 : 0));
@@ -570,7 +625,7 @@ export class Renderer {
     delete opts.neutral; return this.lib.get({ type: 'building', kind: kind as any, opts }, 0);
   }
   disposeChunk(ch: Chunk) {
-    for (const m of [ch.terrain, ch.roads, ch.marks, ch.bridges]) if (m) { this.scene.remove(m); m.geometry.dispose(); }
+    for (const m of [ch.terrain, ch.roads, ch.marks, ch.bridges]) if (m) { this.scene.remove(m); m.geometry.dispose(); } this.dropLamps(ch);
     for (const o of ch.blds) { this.scene.remove(o); (o as THREE.InstancedMesh).dispose?.(); }
   }
   refreshAll() { for (const ch of this.chunks.values()) { this.world.dirtyTerrain.add(ch.id); this.world.dirtyRoads.add(ch.id); } this.buildOverview(); }
@@ -593,7 +648,8 @@ export class Renderer {
       // V10: LOD застройки/дорог считаем от КАМЕРЫ (3D), а не от точки прицела — иначе с высоты пригороды оставались в detail 1
       const cp = this.cam.position; const dc = Math.hypot((id % w.chunksN + 0.5) * cs - cp.x, cp.y, (Math.floor(id / w.chunksN) + 0.5) * cs - cp.z);
       const rs = dc < 1700 ? 1 : 2; const step = dc < 1500 ? 1 : dc < 3500 ? 2 : 4; // V11: шаг рельефа тоже от камеры
-      const det = d > this.q.bldDist ? -1 : dc < 1100 ? 2 : dc < 1900 ? 1 : 0;
+      const RB = BALANCE.render; const hy = ch.bDetail >= 0 ? RB.lodHyst : 0; // E2: гистерезис — дома не «переключаются» туда-сюда на границе LOD
+      const det = d > this.q.bldDist ? -1 : dc < RB.lodNear + (ch.bDetail === 2 ? hy : -hy * 0) ? 2 : dc < RB.lodMid + (ch.bDetail >= 1 ? hy : 0) ? 1 : 0;
       if (performance.now() - t0 > BALANCE.render.chunkMsPerFrame && budget < BALANCE.render.chunkOpsPerFrame || budget <= 0) { if (ch.tStep !== step || ch.rStep !== rs || ch.bDetail !== det || !ch.roads) pend++; continue; }
       if ((ch.tStep !== step || w.dirtyTerrain.has(id)) && budget > 0) { this.buildTerrain(ch, step); w.dirtyTerrain.delete(id); budget--; }
       if ((!ch.roads || w.dirtyRoads.has(id) || ch.rStep !== rs) && budget > 0) { ch.rStep = rs; this.buildRoads(ch); w.dirtyRoads.delete(id); budget--; }
@@ -602,11 +658,24 @@ export class Renderer {
     }
     (window as any).chunkPending = pend;
   }
+  dropLamps(ch: Chunk) { if (ch.lamps) { this.scene.remove(ch.lamps.group); ch.lamps.group.traverse(o => (o as any).geometry?.dispose()); ch.lamps = undefined; } if (ch.glow) { this.scene.remove(ch.glow); ch.glow.geometry.dispose(); ch.glow = undefined; } }
+  glowMat(c: 'avenue' | 'highway') { let m = this.glowMats.get(c); if (!m) { m = createRoadGlowMaterial(c); this.glowMats.set(c, m); } return m; }
+  /** D: кадр ночи — фонари/фары по LOD, дальность (затемнение издали, bloom), «ночное видение» при слое карты */
+  nightFrame() {
+    const n = this.night.value, d = this.ctl.dist; const NB = BALANCE.render as any;
+    this.vision += ((this.overlay !== 'none' ? 1 : 0) - this.vision) * 0.2; nightUniforms.uVision.value = this.vision * Math.max(n, NB.visionDay ?? 0);
+    nightUniforms.uLift.value *= 1; if (n > 0.5) setNightDistance(this.rig, d); else nightUniforms.uLift.value = 0;
+    this.nightComp?.setDist(d);
+    for (const ch of this.chunks.values()) if (ch.lamps) { ch.lamps.update(n, d); ch.lamps.cones.visible = false; if (d < 400) ch.lamps.pools.visible = false; /* вблизи пятна под bloom читаются как шары в воздухе; */ /* конусы под bloom — пятна в воздухе; оставляем пятна на асфальте и плафоны */ }
+    const v0 = this.vehMeshes[0], v1 = this.vehMeshes[1]; const on = n > 0.3 && d < 2600;
+    if (on) { const a = this.carLights; const c0 = v0.count, c1 = v1.count; for (const o of [a.head, a.tail, a.beam]) { const arr = o.instanceMatrix.array as Float32Array; arr.set((v0.instanceMatrix.array as Float32Array).subarray(0, c0 * 16)); arr.set((v1.instanceMatrix.array as Float32Array).subarray(0, c1 * 16), c0 * 16); o.count = c0 + c1; o.instanceMatrix.needsUpdate = true; } }
+    this.carLights.update(on ? n : 0, d);
+  }
   // ---------- lighting ----------
   setTimeOfDay(hours: number) {
     const a = (hours - 6) / 12 * Math.PI; const sy = Math.sin(a);
     this.rig.setTime(hours); // P2: цвета неба/тумана/света, экспозиция, лавандовая тень — из scene-preset
-    this.night.value = 1 - smooth(-0.1, 0.15, sy); styleUniforms.uNight.value = this.night.value * 0.85; // доля горящих окон ночью (lit моделей задаёт порог)
+    this.night.value = 1 - smooth(-0.1, 0.15, sy); styleUniforms.uNight.value = this.night.value * 0.85; if (this.night.value > 0.5) applyNightPreset(this.rig, this.renderer, this.scene); // D: пресет NIGHT_SPEC (луна, туман, экспозиция) // доля горящих окон ночью (lit моделей задаёт порог)
     const tx = this.ctl.tx, tz = this.ctl.tz; const R = 3000;
     this.sun.position.set(tx + Math.cos(a) * R, Math.max(200, sy * R), tz + R * 0.35);
     this.sun.target.position.set(tx, 0, tz);
@@ -634,5 +703,49 @@ export class Renderer {
     if (!this.neon) { this.neonMat = createTrafficNeonMaterial(); this.neon = new THREE.Mesh(g, this.neonMat); this.neon.frustumCulled = false; this.neon.renderOrder = 20; this.scene.add(this.neon); } else { this.neon.geometry.dispose(); this.neon.geometry = g; }
     this.neon.visible = true;
   }
-  render() { this.neonFrame(); this.rail?.frame(1 / 60); const cn = Math.min(40, Math.max(1, this.ctl.dist * 0.01)); if (Math.abs(this.cam.near - cn) > 0.2 * cn) { this.cam.near = cn; this.cam.far = Math.max(this.world.M * 3, this.q.viewDist * 2); this.cam.updateProjectionMatrix(); } /* этап A: ближняя плоскость от дистанции — точность глубины, нет мигания (z-fighting) на краю карты */ const lo = this.ctl.dist < 1800; this.vehMeshes[0].visible = this.vehMeshes[1].visible = lo; /* V11: легковые/грузовики с высоты — субпиксельные, не рисуем */ this.renderer.render(this.scene, this.cam); this.stats.tris = this.renderer.info.render.triangles; this.stats.calls = this.renderer.info.render.calls; }
+  /** E6: поля воды в DataTexture N×N: flow.xy (м/с), глубина, расстояние до берега. Течение — вдоль берега (поворот ∇shore на 90°), быстрее в узких руслах; озёра и море — дрейф шейдера */
+  waterMat: THREE.ShaderMaterial | null = null;
+  makeWater(): THREE.ShaderMaterial {
+    const w = this.world, N = w.N; const wet = new Uint8Array(N * N); for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) wet[j * N + i] = w.tileH(i, j) < 0 ? 1 : 0;
+    const sh = shoreDistance(wet, N, TILE); const S = (i: number, j: number) => sh[clamp(j, 0, N - 1) * N + clamp(i, 0, N - 1)];
+    const d = new Float32Array(N * N * 4);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; const o = k * 4; if (!wet[k]) { d[o + 3] = 0; continue; }
+      const gx = S(i + 1, j) - S(i - 1, j), gz = S(i, j + 1) - S(i, j - 1); let tx = -gz, tz = gx; const L = Math.hypot(tx, tz) || 1; tx /= L; tz /= L; if (tx + 0.3 * tz < 0) { tx = -tx; tz = -tz; }
+      const sd = sh[k]; const narrow = sd < 70 ? 1 : 0; const v = narrow * 0.9 * Math.min(1, sd / 12);
+      d[o] = tx * v; d[o + 1] = tz * v; d[o + 2] = Math.max(0, -w.tileH(i, j)); d[o + 3] = sd - TILE * 0.5; }
+    const tex = new THREE.DataTexture(d, N, N, THREE.RGBAFormat, THREE.FloatType); tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    const m = createWaterMaterial(); m.uniforms.uField = { value: tex }; m.uniforms.uM = { value: w.M }; m.depthWrite = false;
+    m.vertexShader = m.vertexShader.replace('attribute vec2 flow; attribute float depth; attribute float shore; varying vec2 vF; varying float vD, vS; varying vec3 vW;', 'varying vec3 vW;').replace('vF = flow; vD = depth; vS = shore; ', '');
+    m.fragmentShader = m.fragmentShader.replace('varying vec2 vF; varying float vD, vS; varying vec3 vW;', 'uniform sampler2D uField; uniform float uM; varying vec3 vW; vec2 vF; float vD, vS;')
+      .replace('void main(){', 'void main(){ vec4 fld = texture2D(uField, vW.xz / uM); vF = fld.xy; vD = max(fld.z, 0.5); vS = max(fld.w, 0.); if (vW.x < 0. || vW.z < 0. || vW.x > uM || vW.z > uM) { vF = vec2(0.); vD = 6.; vS = 50.; }');
+    this.waterMat = m; return m;
+  }
+  /** E1 (v5 ч.3): трава (пучки) и кусты вокруг камеры; пересев при сдвиге, маска исключает дороги, дома, воду */
+  grass: THREE.InstancedMesh | null = null; bush: THREE.InstancedMesh | null = null; grassMat: THREE.ShaderMaterial | null = null; bushMat: THREE.MeshLambertMaterial | null = null; grassAt = { x: 1e9, z: 1e9, b: 0 };
+  groundMask = (x: number, z: number): 'meadow' | 'yard' | 'park' | 'roadside' | null => {
+    const w = this.world; const i = Math.floor(x / TILE), j = Math.floor(z / TILE); if (i < 0 || j < 0 || i >= w.N || j >= w.N) return null; const k = j * w.N + i;
+    if (w.hAt(x, z) < 0.3) return null; const kd = w.kind[k]; if (kd === K.PARK) return 'park'; if (w.road[k]) return w.cityOf[k] ? null : 'roadside'; if (w.bld[k]) return kd === K.RES && w.style[k] === 0 ? 'yard' : null; if (kd === K.EXTRACT) return null; return w.cityOf[k] ? 'yard' : 'meadow'; };
+  groundFrame() {
+    const cx = this.ctl.tx, cz = this.ctl.tz, d = this.ctl.dist; const on = d < 700 && this.q.shadows !== undefined;
+    if (!this.grassMat) { this.grassMat = createGrassMaterial(); this.bushMat = createBushMaterial(); this.bushMat.color.setHex(0xffffff); /* цвет — instanceColor */
+      this.grass = new THREE.InstancedMesh(createTuftGeometry(), this.grassMat, GRASS.maxInst); this.grass.frustumCulled = false; this.grass.count = 0; this.scene.add(this.grass);
+      this.bush = new THREE.InstancedMesh(createBushGeometry(), this.bushMat, BUSH.maxInst); this.bush.frustumCulled = false; this.bush.count = 0; this.bush.castShadow = true; this.bush.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(BUSH.maxInst * 3), 3); this.scene.add(this.bush); }
+    this.grass!.visible = on && d < 260; this.bush!.visible = on; if (!on) return;
+    tickGround(this.grassMat, this.bushMat!, performance.now() / 1000, this.cam.position);
+    const ver = this.world.net.version + this.bldVer();
+    if (Math.hypot(cx - this.grassAt.x, cz - this.grassAt.z) < 40 && ver === this.grassAt.b) return; this.grassAt = { x: cx, z: cz, b: ver };
+    const R = GRASS.fade; const hAt = (x: number, z: number) => this.world.hAt(x, z);
+    const ms = scatterGrass(Math.floor((cx - R) / 8) * 8, Math.floor((cz - R) / 8) * 8, R * 2, this.groundMask, hAt, 7 + Math.floor(cx / 8) * 31 + Math.floor(cz / 8));
+    ms.forEach((m, i) => this.grass!.setMatrixAt(i, m)); this.grass!.count = ms.length; this.grass!.instanceMatrix.needsUpdate = true;
+    // кусты: джиттер-сетка по детерминированному хэшу клетки — не «прыгают» при пересеве
+    const BR = 420, st = 9; let n = 0; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color(); const BC = GROUND_V5.bush as number[];
+    for (let gz = Math.floor((cz - BR) / st); gz <= Math.floor((cz + BR) / st) && n < BUSH.maxInst; gz++) for (let gx = Math.floor((cx - BR) / st); gx <= Math.floor((cx + BR) / st) && n < BUSH.maxInst; gx++) {
+      const hv = hash2(gx, gz, 501); const x = (gx + hash2(gx, gz, 502)) * st, z = (gz + hash2(gx, gz, 503)) * st; const t = this.groundMask(x, z); if (!t || t === 'roadside') continue;
+      const dens = t === 'park' ? BUSH.density.park : t === 'yard' ? BUSH.density.yard : (this.world.resource[Math.floor(z / TILE) * this.world.N + Math.floor(x / TILE)] === RES.FOREST ? BUSH.density.forestEdge : BUSH.density.meadow); if (hv > dens * st * st) continue;
+      const r = BUSH.r[0] + hash2(gx, gz, 504) * (BUSH.r[1] - BUSH.r[0]); q.setFromAxisAngle(up, hash2(gx, gz, 505) * 6.28); m4.compose(new THREE.Vector3(x, this.world.hAt(x, z) - 0.1, z), q, new THREE.Vector3(r, r, r)); this.bush!.setMatrixAt(n, m4);
+      this.bush!.setColorAt(n, col.setHex(BC[Math.floor(hash2(gx, gz, 506) * BC.length) % BC.length])); n++; }
+    this.bush!.count = n; this.bush!.instanceMatrix.needsUpdate = true; if (this.bush!.instanceColor) this.bush!.instanceColor.needsUpdate = true;
+  }
+  bldVer() { return (this.world as any).bldVer || 0; }
+  render() { if (this.waterMat) this.waterMat.uniforms.uTime.value = performance.now() / 1000; this.groundFrame(); this.neonFrame(); this.rail?.frame(1 / 60); const cn = Math.min(40, Math.max(1, this.ctl.dist * 0.01)); if (Math.abs(this.cam.near - cn) > 0.2 * cn) { this.cam.near = cn; this.cam.far = Math.max(this.world.M * 3, this.q.viewDist * 2); this.cam.updateProjectionMatrix(); } /* этап A: ближняя плоскость от дистанции — точность глубины, нет мигания (z-fighting) на краю карты */ const lo = this.ctl.dist < 1800; this.vehMeshes[0].visible = this.vehMeshes[1].visible = lo; /* V11: легковые/грузовики с высоты — субпиксельные, не рисуем */ this.nightFrame(); if (this.night.value > 0.5 && this.nightComp && this.q.shadows) this.nightComp.composer.render(); else this.renderer.render(this.scene, this.cam); this.stats.tris = this.renderer.info.render.triangles; this.stats.calls = this.renderer.info.render.calls; }
 }

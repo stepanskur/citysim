@@ -8,7 +8,7 @@ import { ARCH_OPTIONS } from './render/Themes';
 import GenWorker from './gen/gen.worker.ts?worker';
 const params = new URLSearchParams(location.search);
 const ui = document.getElementById('ui')!;
-function start(seed: number, size: number, snap?: any, neighbors = +(params.get('nb') ?? 2), arch = snap?.arch ?? params.get('arch') ?? 'mixed') {
+function start(seed: number, size: number, snap?: any, neighbors = +(params.get('nb') ?? 2), arch = snap?.arch ?? params.get('arch') ?? 'lateSng') {
   ui.innerHTML = `<div id="loading"><div style="font:800 32px var(--font)">City<span style="color:var(--accent)">Sim</span></div><div>Генерация мира…</div><div class="bar"><div id="lb" style="width:0"></div></div><div id="lt" class="hint"></div></div>`;
   const w = new GenWorker();
   let stepN = 0;
@@ -27,7 +27,7 @@ async function boot() {
   const ld = params.get('load');
   if (ld) { const raw = localStorage.getItem('citysim_save_' + ld); if (raw) { const s = JSON.parse(raw); s._tiles = await ungz(s.tiles); s._roads = await ungz(s.roads); if (s.rail) s._rail = await ungz(s.rail); /* этап D */ return start(s.seed, s.size, s); } }
   if (params.get('seed')) return start(+params.get('seed')!, +(params.get('size') ?? 2));
-  let sel = 2, nb = 2, mode = 0, arch = 'mixed';
+  let sel = 2, nb = 2, mode = 0, arch = 'lateSng';
   document.body.classList.add('cs-root');
   const ic = (id: string) => `<svg class="cs-ico"><use href="#i-${id}"/></svg>`;
   const sizeIc = (i: number) => `<svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="${15 - i * 3}" y="${9 - i * 2}" width="${4 + i * 6}" height="${4 + i * 4}" rx="2"/></svg>`;

@@ -10,6 +10,8 @@ import { GOODS, BASE_PRICE } from './sim/Economy';
 import { PLACEABLES, ToolId } from './tools';
 import { QUALITIES, Overlay } from './render/Renderer';
 import { BALANCE } from './sim/balance';
+import { ZONE_THEME_UI } from '../design/yards';
+import { BuildMenu } from './buildmenu';
 import { fmtMoney, fmtNum, clamp } from './util';
 
 const h = (html: string) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild as HTMLElement; };
@@ -32,6 +34,7 @@ const OVERLAYS: [Overlay, string][] = [['none', 'Обычный вид'], ['traf
 
 /** точка подключения панелей внешних модулей (например src/routes/): UI.registerPanel('routes','🔀 Маршруты', render) */
 export class UI {
+  bm!: BuildMenu;
   static extraPanels = new Map<string, { title: string; render: (el: HTMLElement, g: Game, force: boolean) => void }>();
   static registerPanel(id: string, title: string, render: (el: HTMLElement, g: Game, force: boolean) => void) { UI.extraPanels.set(id, { title, render }); }
   root = document.getElementById('ui')!; top: HTMLElement; layers!: HTMLElement; tip!: HTMLElement; toolsEl: HTMLElement; sub: HTMLElement; right: HTMLElement; info: HTMLElement; notes: HTMLElement; mini: HTMLCanvasElement; hint: HTMLElement; legend: HTMLElement;
@@ -67,6 +70,8 @@ export class UI {
     TOOLS.forEach((t, i) => { if (i === 1 || i === 4 || i === 7) this.toolsEl.appendChild(h(`<span class="cs-sep"></span>`));
       const b = h(`<button class="cs-tool${t.id === 'bulldoze' ? ' cs-tool--danger' : ''}" data-t="${t.id}" aria-pressed="false" data-tip="${t.name}">${ic(t.id === 'curve' ? 'road' : t.icon)}${t.id === 'curve' ? '<i class="cv">~</i>' : ''}<span class="cs-kbd k">${t.key}</span></button>`);
       b.onclick = () => g.tools.set(t.id, t.id === 'zone' ? 1 : 0); this.toolsEl.appendChild(b); });
+    { const bb = h(`<button class="cs-tool" data-bm="1" aria-pressed="false" data-tip="Меню строительства (B): Q W E R T — службы, Tab — подвкладка, 1–9 — карточка, Esc">${ic('build')}<span class="cs-kbd k">B</span></button>`); this.toolsEl.insertBefore(bb, this.toolsEl.firstChild);
+      this.bm = new BuildMenu(g, document.body); bb.onclick = () => { this.bm.toggle(); bb.setAttribute('aria-pressed', String(this.bm.open)); }; }
     // всплывающие подсказки для кнопок с data-tip
     this.root.addEventListener('pointerover', e => { const el = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null; if (!el) { this.tip.hidden = true; return; } const r = el.getBoundingClientRect(); this.tip.textContent = el.dataset.tip!; this.tip.hidden = false; const tw = this.tip.offsetWidth; const below = r.top < 120; this.tip.classList.toggle('below', below); this.tip.style.left = Math.max(6, Math.min(innerWidth - tw - 6, r.left + r.width / 2 - tw / 2)) + 'px'; this.tip.style.top = (below ? r.bottom + 10 : r.top - 44) + 'px'; });
     this.root.addEventListener('pointerout', e => { if (!(e.relatedTarget as HTMLElement)?.closest?.('[data-tip]')) this.tip.hidden = true; });
@@ -80,6 +85,7 @@ export class UI {
     });
     window.addEventListener('pointermove', e => { this.hint.style.left = e.clientX + 16 + 'px'; this.hint.style.top = e.clientY + 14 + 'px'; this.hintT = performance.now(); });
     this.mini.onpointerdown = e => { const r = this.mini.getBoundingClientRect(); g.r.ctl.jump((e.clientX - r.left) / r.width * g.world.M, (e.clientY - r.top) / r.height * g.world.M); };
+    window.addEventListener('wheel', e => { if (!e.shiftKey || g.tools.tool !== 'zone') return; e.preventDefault(); e.stopPropagation(); const n = ZONE_THEME_UI.order.length; g.tools.zoneTh = (g.tools.zoneTh + ((e.deltaY || e.deltaX) > 0 ? 1 : n - 1)) % n; this.refreshTools(); }, { capture: true, passive: false }); // F1: Shift+колесо — тема кисти
     this.refreshTools(); this.setSpeed(1);
   }
   hintT = 0; hintS = '';
@@ -98,6 +104,11 @@ export class UI {
     const tips: Record<string, string> = { road: 'Клик — начало, клик — конец (цепочка продолжается). Ctrl — шаг угла 15°. Esc/ПКМ — отмена. Над водой — мост. L, PageUp/PageDown, +/− — уровень (тоннель 3…эстакада 4, шаг 8 м); дорога в уровне земли выравнивает рельеф (насыпь/выемка до 6 м); привязка к любой точке дороги; здания под сносом — красным с ценой: разные уровни пересекаются без перекрёстка.', curve: 'Клик: начало → контрольная точка → конец.', zone: 'Протяните прямоугольник. Зонируются только участки у дорог.', terrain: 'Удерживайте ЛКМ. «Выровнять» — к высоте точки нажатия.', place: 'Клик по участку у дороги.', line: 'Кликайте остановки. Enter или двойной клик — открыть линию. Трамвай/метро/поезд — только по путям.', rail: 'Клик — начало, клик — конец (цепочка). L — уровень; метро по умолчанию в тоннеле. U — режим метро (рентген).' };
     this.sub.hidden = false; this.sub.innerHTML = `<div class="cs-seg">${t.subs.map((s, i) => `<button aria-pressed="${i === g.tools.sub}" data-i="${i}">${s}</button>`).join('')}</div><div class="tip2">${tips[t.id] || ''} <span class="cs-kbd">Tab</span> — следующий</div>`;
     this.sub.querySelectorAll('button[data-i]').forEach(b => (b as HTMLElement).onclick = () => g.tools.set(t.id, +(b as HTMLElement).dataset.i!));
+    if (t.id === 'zone') { // F1: тема кисти (4 темы, без «Смешанного»); Shift+колесо — смена
+      const T = g.tools; const NM: Record<string, string> = { lateSng: 'Позднее СНГ', russianClassic: 'Рус. классика', french: 'Париж', base: 'Пастила' };
+      const row = h(`<div class="cs-subrow"><span class="cs-sublbl">Тема</span><div class="cs-seg">${ZONE_THEME_UI.order.map((id, i) => `<button data-th="${i}" aria-pressed="${i === T.zoneTh}"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;background:#${(ZONE_THEME_UI.swatch as any)[id].toString(16).padStart(6, '0')}"></span>${NM[id]}</button>`).join('')}</div><span class="cs-sublbl">${ZONE_THEME_UI.hotkey}</span></div>`);
+      this.sub.insertBefore(row, this.sub.querySelector('.tip2')); row.querySelectorAll('button[data-th]').forEach(b => (b as HTMLElement).onclick = () => { T.zoneTh = +(b as HTMLElement).dataset.th!; this.refreshTools(); });
+    }
     if (t.id === 'road' || t.id === 'curve' || t.id === 'rail') { // этап C: уровень (L) и модули профиля
       const T = g.tools; const row = h(`<div class="cs-subrow"><span class="cs-sublbl">Уровень <span class="cs-kbd">L</span></span><div class="cs-seg"><button data-dl="-1" data-tip="Ниже (PageDown / −)">−</button><button aria-pressed="true" style="min-width:92px">${levelName(T.lv)}</button><button data-dl="1" data-tip="Выше (PageUp / +)">+</button></div><span class="cs-sublbl">Модули</span><div class="cs-seg"><button data-m="${MOD.TRAM}" aria-pressed="${!!(T.mods & MOD.TRAM)}" data-tip="Трамвайные пути в полосе (общий граф с рельсовой сетью)">Трамвай</button><button data-m="${MOD.BUS}" aria-pressed="${!!(T.mods & MOD.BUS)}" data-tip="Выделенная полоса для автобусов: без пробок для линий">Автобусная полоса</button><button data-m="${MOD.ONEWAY}" aria-pressed="${!!(T.mods & MOD.ONEWAY)}" data-tip="Одностороннее движение по направлению прокладки; с «Переулком» — однополосная дорога-отвод (B2)">Одностороннее</button></div></div>`);
       this.sub.insertBefore(row, this.sub.querySelector('.tip2'));
