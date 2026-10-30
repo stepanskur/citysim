@@ -21,7 +21,7 @@ const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
 // ---------- P3. Онбординг: 5 целей (раздел 1) ----------
 export interface Goal { id: string; title: string; hint: string; key?: string; done: (m: Metrics, b: Metrics) => boolean; progress?: (m: Metrics, b: Metrics) => number; rep?: number }
 export const ONBOARDING: Goal[] = [
-  { id: 'g_road', title: 'Разгрузите улицу', hint: 'Инструмент «🛣 Дорога» (2): проложите параллельную улицу или проспект у красной магистрали.', key: '2', done: (m, b) => m.roads > b.roads },
+  { id: 'g_road', title: 'Разгрузите улицу', hint: 'Инструмент «🛣 Дорога» (2): проложите параллельную улицу или проспект у загруженной магистрали (красная в слое «Пробки», кнопка слоёв справа сверху).', key: '2', done: (m, b) => m.roads > b.roads },
   { id: 'g_res', title: 'Разметьте жильё', hint: '«🏘 Зонирование» (4) → «Жилая»: 20 участков у новой дороги.', key: '4', done: (m, b) => m.zones[0] - b.zones[0] >= 20, progress: (m, b) => (m.zones[0] - b.zones[0]) / 20 },
   { id: 'g_jobs', title: 'Дайте людям работу', hint: 'Зонируйте коммерцию (К) или промышленность (П): 10 участков.', key: '4', done: (m, b) => m.zones[1] + m.zones[2] - b.zones[1] - b.zones[2] >= 10, progress: (m, b) => (m.zones[1] + m.zones[2] - b.zones[1] - b.zones[2]) / 10 },
   { id: 'g_bus', title: 'Первый автобус', hint: '«🚌 Линии» (8) → «Автобус»: 4+ остановки у дорог, Enter — открыть линию.', key: '8', done: (m, b) => m.lines[0] > b.lines[0] && m.stopsMax >= 4, rep: 1 },

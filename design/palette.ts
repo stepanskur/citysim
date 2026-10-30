@@ -162,5 +162,43 @@ export const THEMES = {
   details: { downpipe: 0x8a929c, ac: 0xeef0f2, acGrille: 0x9aa2ae, vent: 0xb8b0b8, antenna: 0x6a7080, dish: 0xf4f4f0, fireEscape: 0x3a3f5a },
 };
 
-export const PALETTE = { BRAND, WORLD, TERRAIN, SEASONS, ROADS, BUILD, VEHICLES, TREES, HEATMAPS, UI, GROUND, ROAD_SPEC, SIGNAL, THEMES };
+
+/** v5: ночной стиль (NIGHT_SPEC.md). Свет — только отсюда (design/night.ts). */
+export const NIGHT = {
+  /** Сцена: небо/туман/свет. Земля НЕ чёрная: «лунный» хеми + подъём экспозиции, чтобы строить было видно. */
+  scene: { zenith: 0x070b24, horizon: 0x1f2a5c, fog: 0x141a40, hemiSky: 0x5a6ab8, hemiGround: 0x2a2448, hemiI: 0.75, moon: 0xaab8ff, moonI: 0.4, exposure: 1.05, groundLift: 0.1, farHemi: 0.3, farFrom: 350, farTo: 1600 },
+  /** Цвета источников (HDR-множитель ≥1 → попадают в bloom). */
+  lamp: { sodium: 0xffb45a, led: 0xfff1d6, cold: 0xcfe0ff, pool: 0xffc27a, head: 0xfff6dc, tail: 0xff2a3a, brake: 0xff1020, window: 0xffc878, windowCold: 0xbfd8ff, neon: [0x5fe0c8, 0xff5fa2, 0x8f7bff, 0xffc145] },
+  /** Интенсивности (умножаются на цвет в шейдере, toneMapped). */
+  intensity: { lampHead: 6.0, pool: 0.42, cone: 0.1, carHead: 5.0, carTail: 3.2, window: 1.5, highwayNeon: 2.4, spaceDot: 2.2 },
+  /** Bloom (UnrealBloomPass). */
+  bloom: { strength: 0.85, radius: 0.55, threshold: 0.82, farStrength: 0.95 },
+  /** «Ночное видение» слоёв: тёмная монохромная база + неон данных. */
+  vision: { base: 0x0c1428, baseHi: 0x2a3a5c, buildings: 0x1a2440, buildingsEdge: 0x3a5a8a, water: 0x06223a, grid: 0x2a4a6a,
+    traffic: [0x2fe6a0, 0x9ff05a, 0xffe14a, 0xff8a3c, 0xff2f5a], zones: { R: 0x3fe08a, C: 0x4fa8ff, I: 0xffc145, O: 0xc07bff }, heat: [0x10204a, 0x2f5fd0, 0x2fd0e0, 0xb0ff6a, 0xfff07a] },
+  /** Строительство ночью: курсор, сетка, призрак. */
+  build: { cursor: 0x7ff0d8, cursorBad: 0xff5a6a, grid: 0x7ff0d8, gridAlpha: 0.22, ghost: 0x9ff8e8, ghostAlpha: 0.45 },
+};
+
+
+/** v5 E5: приглушение. HSL: s' = min(s·0.55, 0.30); l' = clamp(l, 0.30, 0.90); оттенок тянется на 15 % к тёплому серому 35°. Нет «полностью красных/жёлтых» домов. */
+export const MUTE = { satK: 0.55, satMax: 0.30, lMin: 0.30, lMax: 0.90, warmHue: 35, warmPull: 0.15 };
+export function mute(hex: number, k = MUTE): number {
+  const r = (hex >> 16 & 255) / 255, g = (hex >> 8 & 255) / 255, b = (hex & 255) / 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h = 0; const l = (mx + mn) / 2, d = mx - mn;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (d) h = 60 * (mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4);
+  let dh = ((k.warmHue - h + 540) % 360) - 180; h = (h + dh * k.warmPull + 360) % 360;
+  const s2 = Math.min(s * k.satK, k.satMax), l2 = Math.min(k.lMax, Math.max(k.lMin, l));
+  const c = (1 - Math.abs(2 * l2 - 1)) * s2, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l2 - c / 2;
+  const [R, G, B] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return (Math.round((R + m) * 255) << 16) | (Math.round((G + m) * 255) << 8) | Math.round((B + m) * 255);
+}
+const deepMute = <T>(o: T): T => (typeof o === 'number' ? mute(o) : Array.isArray(o) ? o.map(deepMute) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([a, v]) => [a, deepMute(v)])) : o) as T;
+/** Новые значения (заменяют BUILD/THEMES в рендере). Генерируются формулой — правка палитры только в исходниках выше. */
+export const BUILD_MUTED = deepMute(BUILD);
+export const THEMES_MUTED = deepMute(THEMES);
+/** Земля v5: трава приглушена, но остаётся зелёной (s ≤ 0.38). */
+export const GROUND_V5 = { grass: 0x8ea56a, grassDry: 0xa3ad78, meadow: 0x95ac6e, forestFloor: 0x6f8458, yardGrass: 0x9cae7c, bladeBase: 0x6d8a4e, bladeTip: 0xb4c48a, bush: [0x5f7d4c, 0x6e8a55, 0x7c8f5a] };
+
+export const PALETTE = { BRAND, WORLD, TERRAIN, SEASONS, ROADS, BUILD, VEHICLES, TREES, HEATMAPS, UI, GROUND, ROAD_SPEC, SIGNAL, THEMES, NIGHT, MUTE, BUILD_MUTED, THEMES_MUTED, GROUND_V5 };
 export default PALETTE;

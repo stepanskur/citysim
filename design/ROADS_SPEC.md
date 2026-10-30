@@ -53,3 +53,21 @@
 - Обе кромки ленты ресемплируются на одинаковое число точек по длине дуги — нет «веера».
 - Разметка: `dashedAlong` — штрихи меряются по длине дуги смещённой линии (штрих 3 / пробел 6).
 - Стык с перекрёстком: кривая обрезается на `padRadiusFor` (road-kit.ts) от узла, касательная в узле = направление рукава; последняя контрольная точка — на радиусе пада.
+
+## v5 · Стыки дорог (B1) — design/road-joints.ts
+
+**Причины артефактов s01 (src/render/Renderer.ts, buildRoads ~272):**
+1. В узлах степени 2 и тупиках рисуется `disc(r)` по максимальной полуширине + диск тротуара → «ступени» ширины и белые круги.
+2. Краевые линии (`strip hw-0.55`) доходят до центра узла → белые хвосты поверх площадки.
+3. Смещения Y `E.type*0.005` → z-fighting между классами.
+4. `buildJunction/padRadiusFor` не обрезают рёбра → наложение асфальта ребра и площадки.
+
+**Алгоритм:** SDF round-union рукавов (opUnionRound, радиус = CORNER_R) → полярные лучи для уровней асфальт/бордюр/тротуар → срез плоскостями trim. Отдельный меш на узел, рёбра начинаются ровно в trim.
+- trim: u = ((hw_j+R) + (hw_i+R)·cosθ) / sinθ.
+- CORNER_R: lane 6, street 8, avenue 12, highway 15 (R ≥ curb+sw+1.5).
+- Z_LAYERS: skirt −0.3, asphalt 0, бордюр/тротуар 0.15, разметка 0.02 + polygonOffset −2, пятна света 0.04, оверлей 0.1. Никаких E.type-сдвигов.
+- JOINT_MARKS: зебра 3 м (полосы 0.5), начинается в 5 м от trim; стоп-линия 0.4 м; осевая/краевые — от trim+5.5.
+- TAPER (смена ширины): длина max(12, 8·|Δhw|), smoothstep, на рукаве младшего класса; излом >4° — дуга R = max(15, …).
+- END_CAP: bulb R lane 7.5 / street 10 / avenue 14; round (полукруг R=hw, trim hw+3); flat (шапка 1.5 м, переход 5 м).
+- API: `buildNodeMesh(node, arms) → {base, marks, trims}`; `junctionTrims`, `buildJunctionV5`, `buildDeadEnd(node, arm, 'bulb'|'round'|'flat')`, `buildTransition`.
+- Превью: shots/v5-joints-cross.png, v5-joints-trans.png, v5-joints-ends.png.

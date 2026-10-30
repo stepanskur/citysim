@@ -22,4 +22,17 @@ T.rnd = () => 0; T.rerouteStuck();
 ok(T.stats.rerouted === 1 && via(v.path) === false, 'застрявший агент перестроил остаток пути в объезд затора');
 ok(v.path.length >= 2, 'путь агента цел');
 console.log(`   перестроено ${T.stats.rerouted} из попыток ${T.rerouteTried}`);
+// этап C (17): одностороннее, режимы узлов
+{ const n2 = new RoadNet(); n2.addRoad(0, 0, 400, 0, 0, 2); n2.addRoad(400, 0, 800, 0, 0, 2); const w2: any = { net: n2, cities: [], nearestCity: () => -1, edgeOff: () => 0 }; const T2 = new Traffic(w2);
+  const a = n2.nearestNode(0, 0, 5), m = n2.nearestNode(400, 0, 5), b = n2.nearestNode(800, 0, 5); const e1 = n2.nodes[a].edges[0];
+  ok(!!T2.astar(b, a), 'двусторонняя: обратный путь есть'); n2.setOneWay(e1, 1); ok(!T2.astar(b, a) && !!T2.astar(a, b), 'одностороннее a→b: обратно не проехать');
+  const e2 = n2.setOneWay(e1, -1); ok(!!T2.astar(m, a) && !T2.astar(a, m), 'разворот одностороннего');
+  n2.setOneWay(e2, 0); ok(!!T2.astar(a, m) && !!T2.astar(m, a), 'снятие одностороннего');
+  const dead = new RoadNet(); dead.addRoad(0, 0, 100, 0, 0, 2); dead.setOneWay(0, 1); ok(!dead.flowOk(dead.nearestNode(100, 0, 5)), 'тупик без выезда распознаётся'); }
+{ const n3 = new RoadNet(); n3.addRoad(-300, 0, 0, 0, 1, 2); n3.addRoad(0, 0, 300, 0, 1, 2); n3.addRoad(0, 0, 0, 300, 1, 2); n3.addRoad(1000, 0, 1300, 0, 0, 2); n3.addRoad(1000, 0, 1000, 300, 0, 2); n3.addRoad(700, 0, 1000, 0, 0, 2);
+  n3.addRoad(2000, 0, 2300, 0, 1, 2); n3.addRoad(2000, 0, 1700, 0, 1, 2); n3.addRoad(2000, 0, 2300, 220, 1, 2); // Y-развилка ~36°
+  const T3 = new Traffic({ net: n3, cities: [], nearestCity: () => -1, edgeOff: () => 0 } as any);
+  ok(T3.nodeMode(n3.nearestNode(0, 0, 5)) === 1, 'проспект × проспект — светофор'); ok(T3.nodeMode(n3.nearestNode(1000, 0, 5)) === 2, 'улица × улица — приоритет');
+  ok(T3.nodeMode(n3.nearestNode(2000, 0, 5)) === 1, 'Y-развилка проспектов 30–60° — светофор');
+  const nn = n3.nearestNode(1000, 0, 5); n3.nodes[nn].ctl = 3; n3.version++; ok(T3.nodeMode(nn) === 3, 'режим узла вручную'); }
 console.log(fail ? `Провалено: ${fail}` : 'Все проверки пробок пройдены'); process.exit(fail ? 1 : 0);

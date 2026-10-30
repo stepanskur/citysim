@@ -70,7 +70,7 @@ h3,h4,.cs-value{font-family:var(--display)}
 #toolsub .cs-seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
 #toolsub .tip2{max-width:620px;font-size:var(--fs-xs);color:var(--text-mute);text-align:center;padding:0 8px 2px}
 /* п.5 правая панель */
-#right{position:absolute;top:84px;right:14px;width:380px;max-height:calc(100vh - 200px);overflow:auto;display:none;animation:cs-in var(--t-slow) var(--ease) both;padding:0}
+#right{position:absolute;top:84px;right:14px;width:380px;max-height:calc(100vh - 290px); /* QA2 п.8: не наезжает на подпанель инструмента внизу */overflow:auto;display:none;animation:cs-in var(--t-slow) var(--ease) both;padding:0}
 .cs-panel .cs-panel__head{position:sticky;top:0;z-index:1;background:linear-gradient(180deg,rgba(36,40,68,.96),rgba(36,40,68,.85));border-radius:var(--r-lg) var(--r-lg) 0 0;font:600 16px/1 var(--display)}
 .cs-panel__head .cs-ico{width:20px;height:20px}.cs-panel__head .x{margin-left:auto;width:30px;height:30px}
 .cs-panel h4{margin:14px 0 6px;font:600 var(--fs-xs) var(--font);color:var(--text-mute);text-transform:uppercase;letter-spacing:.08em}
@@ -95,7 +95,7 @@ h3,h4,.cs-value{font-family:var(--display)}
 #tip{position:fixed;z-index:20;pointer-events:none}#tip[hidden]{display:none}
 #tip.below::after{bottom:auto;top:-5px}
 /* п.11 цель/обучение — cs-panel 320 px (переопределение снаружи, src/engage не тронут) */
-#ui #eng-goal{top:auto !important;left:auto !important;transform:none !important;right:14px !important;bottom:18px !important;width:320px !important;max-width:320px !important;padding:12px 14px !important;font-size:12px !important;border-radius:var(--r-lg) !important;border:0 !important;background:linear-gradient(180deg,rgba(40,44,74,.86),rgba(20,22,40,.84)) !important;box-shadow:var(--sh-panel) !important}
+#ui #eng-goal{top:84px !important;left:14px !important;transform:none !important;right:auto !important;bottom:auto !important; /* QA2 п.8: не закрывает конец тулбара */ width:320px !important;max-width:320px !important;padding:12px 14px !important;font-size:12px !important;border-radius:var(--r-lg) !important;border:0 !important;background:linear-gradient(180deg,rgba(40,44,74,.86),rgba(20,22,40,.84)) !important;box-shadow:var(--sh-panel) !important}
 #ui #eng-goal .t{font:600 14px var(--display) !important} #ui #eng-goal .h{white-space:normal !important;overflow:visible !important}
 #ui #eng-goal .bar,#ui #eng-goal .bar>*{height:4px !important}
 #ui #eng-goal button{height:28px;font-size:12px}

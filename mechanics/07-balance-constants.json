@@ -721,7 +721,7 @@
       "lane": 30,
       "street": 35,
       "avenue": 45,
-      "highway": 15
+      "highway": 75
     },
     "highwayResSetback": 30,
     "highwayResSetbackWithWall": 15,
@@ -758,7 +758,46 @@
         "comDemandMult": 1.3
       }
     },
-    "noAccessDecayDays": 10
+    "noAccessDecayDays": 10,
+    "beltBounds": [
+      0.25,
+      0.6,
+      1,
+      2
+    ],
+    "hierarchyNoise": 0.1,
+    "minChainLen": {
+      "highway": 1500,
+      "avenue": 400,
+      "street": 60,
+      "lane": 30
+    },
+    "highwayDetourMax": 0.3,
+    "highwayCrossAngleTol": 15,
+    "highwayCorridorMin": 1500,
+    "interchangeSpacing": 1200,
+    "highwayRejoinMin": 3000,
+    "minEdgeGap": 24,
+    "maxCrossingsPerPair": 1,
+    "minLoopPerimeterBlocks": 4,
+    "maxNodeDegree": 4,
+    "ringMinPop": 150000,
+    "secondRingPop": 700000,
+    "bypassPop": 3000000,
+    "deadEndSnapWidthMult": 1.5,
+    "deadEndSnapMin": 12,
+    "deadEndExtendMax": 40,
+    "deadEndExtendAngle": 30,
+    "culDeSacMax": 120,
+    "taperLenPerM": 10,
+    "taperMinLen": 20,
+    "maxBendDeg": 20,
+    "genMaxVC": 0.85,
+    "genFixRounds": 3,
+    "crosswalkWidth": 4,
+    "junctionZonePad": 2,
+    "culDeSacSpacing": 80,
+    "villageMaxPop": 5000
   },
   "rail": {
     "systems": {
@@ -880,6 +919,248 @@
     "unprofitableOpRatio": 0.5,
     "unprofitableMonths": 3,
     "deadStopDays": 30
+  },
+  "zoning": {
+    "depth": {
+      "lane": 24,
+      "street": 32,
+      "avenue": 48,
+      "pedestrian": 24
+    },
+    "lotWidth": {
+      "lane": [
+        12,
+        20
+      ],
+      "street": [
+        16,
+        28
+      ],
+      "avenue": [
+        24,
+        40
+      ]
+    },
+    "setback": {
+      "lane": 3,
+      "street": 4,
+      "avenue": 6
+    },
+    "levelShare": {
+      "lane": 0.4,
+      "street": 0.7,
+      "avenue": 1
+    },
+    "minBlockArea": 1200,
+    "minLotDepth": 12,
+    "courtyardMin": 12,
+    "lotWidthJitter": 0.15,
+    "tileCoverShare": 0.5,
+    "courtyardAreaBounds": [
+      400,
+      2500,
+      8000
+    ],
+    "spotsPer100m2": 3.5,
+    "parkingOccupancy": [
+      0.3,
+      0.8
+    ],
+    "spotsPerFlat": 0.5,
+    "courtyardParkEffect": 0.03,
+    "courtyardParkRadius": 60,
+    "drivewayFromJunction": 20,
+    "themeKeepProb": 0.85
+  },
+  "trafficControl": {
+    "uncontrolledCap": 500,
+    "allWayStopCap": 450,
+    "criticalGap": 6.5,
+    "followUpTime": 3.5,
+    "saturationFlow": 1800,
+    "cycleMin": 40,
+    "cycleDefault": 90,
+    "cycleMax": 150,
+    "minGreen": 7,
+    "lostTimePerPhase": 4,
+    "leftPhaseThreshold": 200,
+    "adaptiveIntervalMin": 15,
+    "nightBlinkHours": [
+      23,
+      5
+    ],
+    "greenWaveDelayCut": 0.35,
+    "roundabout1": [
+      1200,
+      0.6
+    ],
+    "roundabout2": [
+      2000,
+      0.8
+    ],
+    "cost": {
+      "priority": 2000,
+      "stop": 1000,
+      "signal": 25000,
+      "roundabout1": 40000,
+      "roundabout2": 90000
+    },
+    "upkeep": {
+      "priority": 20,
+      "stop": 10,
+      "signal": 300,
+      "roundabout1": 150,
+      "roundabout2": 300
+    },
+    "laneCap": {
+      "lane": 400,
+      "street": 700,
+      "avenue": 1600,
+      "highway": 2000,
+      "ramp": 1500
+    },
+    "maxLanes": {
+      "lane": 1,
+      "street": 2,
+      "avenue": 4,
+      "highway": 5,
+      "ramp": 2
+    },
+    "oneWayCapBonus": 0.1,
+    "noLeftCapBonus": 0.15,
+    "busStopInLanePenalty": 0.25,
+    "interchange": {
+      "diamond": [
+        350000,
+        1500,
+        1500
+      ],
+      "parclo": [
+        500000,
+        2000,
+        1500
+      ],
+      "cloverleaf": [
+        900000,
+        3500,
+        1200
+      ],
+      "turbine": [
+        2000000,
+        6000,
+        1800
+      ],
+      "trumpet": [
+        450000,
+        1800,
+        1500
+      ],
+      "split": [
+        300000,
+        1200,
+        2000
+      ]
+    },
+    "cloverMaxFlow": 6000,
+    "accelLen": 200,
+    "decelLen": 120,
+    "weavingPenalty": 0.2,
+    "weavingLen": 600,
+    "mergeTaperLen": 120,
+    "busLaneEndBeforeMerge": 30
+  },
+  "construction": {
+    "levelValue": [
+      0,
+      900,
+      1400,
+      2000,
+      2800,
+      3800
+    ],
+    "compensationMult": {
+      "R": 1.2,
+      "C": 1,
+      "I": 0.8,
+      "O": 1.5
+    },
+    "moveOutPerResident": 1500,
+    "moveOutPerJob": 3000,
+    "happinessPerDemolished": 0.002,
+    "demolishMoodDays": 30,
+    "evicteeStayShare": 0.5,
+    "treeCost": 50,
+    "corridorPad": 2,
+    "levelStep": 8,
+    "levelRange": {
+      "road": [
+        -3,
+        4
+      ],
+      "rail": [
+        -4,
+        4
+      ],
+      "metro": [
+        -4,
+        -1
+      ],
+      "tram": [
+        -1,
+        2
+      ]
+    },
+    "maxGrade": {
+      "highway": 0.05,
+      "avenue": 0.06,
+      "street": 0.08,
+      "lane": 0.1,
+      "rail": 0.035,
+      "metro": 0.04,
+      "tram": 0.06
+    },
+    "groundTol": 1,
+    "embankmentMaxH": 6,
+    "cutMaxDepth": 6,
+    "elevatedMult": [
+      3,
+      0.1
+    ],
+    "tunnelMult": [
+      6,
+      9
+    ],
+    "tunnelPortalCost": 80000,
+    "cutCoverMaxDepth": 8,
+    "clearance": {
+      "road": 5.5,
+      "rail": 6.5
+    },
+    "heightStep": 4,
+    "slopeRatio": 2,
+    "fillCostPerM3": 12,
+    "cutCostPerM3": 18,
+    "haulCostPerM3": 6,
+    "haulRadius": 500,
+    "rockMult": 2,
+    "underwaterMult": 3,
+    "pierSpacing": {
+      "road": 30,
+      "highway": 40,
+      "rail": 35
+    },
+    "maxSpan": [
+      60,
+      150
+    ],
+    "cableStayMult": 2.5,
+    "pierClearance": 1.5,
+    "pierShiftShare": 0.4,
+    "portalPierCost": 40000,
+    "pierMoveCost": 15000,
+    "pierMaxWaterDepth": 8,
+    "snapNode": 6,
+    "snapEdge": 4
   },
   "alerts": {
     "congestionVC": 0.9,

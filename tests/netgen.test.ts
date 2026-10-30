@@ -1,6 +1,6 @@
 // Этап B: инварианты генерации сети (mechanics/13)
 import { genWorld } from '../src/gen/worldgen';
-import { components, CLS } from '../src/gen/netgen';
+import { components, CLS, overlapDup } from '../src/gen/netgen';
 import { RoadNet } from '../src/world/RoadNet';
 import { BALANCE } from '../src/sim/balance';
 let fail = 0; const ok = (c: boolean, m: string) => { console.log((c ? 'ok ' : 'FAIL ') + m); if (!c) fail++; };
@@ -37,6 +37,22 @@ for (const [seed, size] of [[7, 2], [42, 1], [1234, 0], [11, 1], [99, 2], [2024,
     if (process.env.DBG) for (const h of H) { const E = net.edges[h]; if (E.len < step * 0.5 && isA.has(E.a) && isA.has(E.b) && (E.lv || 0) === 0) console.log('  close', h, Math.round(E.len), Math.round(net.nodes[E.a].x), Math.round(net.nodes[E.a].z), net.nodes[E.a].edges.map((x: number) => net.edges[x].type + '/' + (net.edges[x].lv || 0)).join(','), '|', net.nodes[E.b].edges.map((x: number) => net.edges[x].type + '/' + (net.edges[x].lv || 0)).join(',')); }
     ok(close <= 2, `seed ${seed}: наземных развязок ближе ${step / 2} м подряд: ${close}`);
   }
+  // USER_FEEDBACK_2 A1/A2/A3/A4: дубли, тупики у дорог, шоссе в уровне только с проспектом/шоссе
+  { const W2 = BALANCE.netgen.specW; let dup = 0, dead = 0, hwStreet = 0; const al = net.edges.map((E: any, i: number) => i).filter((i: number) => net.edges[i].alive);
+    const sd = (px: number, pz: number, ax: number, az: number, bx: number, bz: number) => { const dx = bx - ax, dz = bz - az; const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1))); return Math.hypot(ax + dx * t - px, az + dz * t - pz); };
+    for (const e of al) { const E = net.edges[e]; if (E.type === 2 || E.lv) continue; const A = net.nodes[E.a], B = net.nodes[E.b];
+      for (const f of net.edgesNear((A.x + B.x) / 2, (A.z + B.z) / 2, E.len / 2 + 30)) { if (f === e) continue; const F = net.edges[f]; if (!F.alive || F.lv) continue; const P = net.nodes[F.a], Q = net.nodes[F.b];
+        const cos = Math.abs(((B.x - A.x) * (Q.x - P.x) + (B.z - A.z) * (Q.z - P.z)) / (E.len * F.len)); const thr = (W2[E.type] + W2[F.type]) / 2 + 4;
+        void cos; if (f > e && overlapDup(A, B, P, Q, thr)) dup++; } }
+    net.nodes.forEach((N0: any, n: number) => { if (!N0.alive) return; const L = N0.edges.filter((e: number) => net.edges[e].alive);
+      if (L.some((e: number) => net.edges[e].type === 2 && !net.edges[e].lv) && L.some((e: number) => !net.edges[e].lv && (net.edges[e].type === 0 || net.edges[e].type === 3))) hwStreet++;
+      if (L.length !== 1 || N0.outside || net.edges[L[0]].type === 2) return;
+      for (const f of net.edgesNear(N0.x, N0.z, 20)) { const F = net.edges[f]; if (!F.alive || f === L[0] || F.a === n || F.b === n || F.lv || F.type === 2) continue; if (sd(N0.x, N0.z, net.nodes[F.a].x, net.nodes[F.a].z, net.nodes[F.b].x, net.nodes[F.b].z) < 12) { dead++; break; } } });
+    { let xx = 0; net.nodes.forEach((N0: any) => { if (N0.alive && N0.edges.filter((e: number) => net.edges[e].alive && net.edges[e].type === 2 && !net.edges[e].lv).length >= 4) xx++; }); ok(xx === 0, `seed ${seed}: крестов «шоссе × шоссе» в уровне ${xx}`); }
+    { let avDead = 0, cds = 0; const ends: any[] = []; net.nodes.forEach((N0: any) => { if (!N0.alive || N0.outside) return; const L = N0.edges.filter((e: number) => net.edges[e].alive); if (L.length !== 1) return; ends.push(N0); if (net.edges[L[0]].type === 1) { let cur = N0, e = L[0], hwEnd = false; for (let g = 0; g < 200; g++) { const E = net.edges[e]; const o = net.nodes[E.a === net.nodes.indexOf(cur) ? E.b : E.a]; if (o.edges.some((x: number) => net.edges[x].alive && net.edges[x].type === 2)) { hwEnd = true; break; } const nx = o.edges.filter((x: number) => net.edges[x].alive && x !== e && net.edges[x].type === 1); if (nx.length !== 1 || o.edges.filter((x: number) => net.edges[x].alive).length !== 2) break; cur = o; e = nx[0]; } if (!hwEnd) avDead++; } });
+      for (let i = 0; i < ends.length; i++) for (let j = i + 1; j < ends.length; j++) if (Math.hypot(ends[i].x - ends[j].x, ends[i].z - ends[j].z) < 80) cds++;
+      ok(avDead === 0, `seed ${seed}: проспектов, кончающихся тупиком: ${avDead} (кроме съездов-стыков шоссе)`); ok(cds <= Math.max(3, ends.length * 0.05), `seed ${seed}: пар тупиков ближе 80 м ${cds} (тупиков ${ends.length})`); }
+    ok(dup <= 2, `seed ${seed}: дублей «дорога в дороге» ${dup} (≤ 2)`); ok(dead <= 2, `seed ${seed}: тупиков ближе 12 м к дороге ${dead} (≤ 2)`); ok(hwStreet <= 3, `seed ${seed}: узлов «шоссе в уровне с улицей/переулком» ${hwStreet} (≤ 3)`); }
   // плавность шоссе: на узлах степени 2 между рёбрами шоссе поворот ≤ 12° (ломаная давала 20–45°, до 175°)
   { let mx = 0; net.nodes.forEach((N0: any, n: number) => { if (!N0.alive) return; const L = N0.edges.filter((e: number) => net.edges[e].alive); if (L.length !== 2 || L.some((e: number) => net.edges[e].type !== 2)) return;
       const d = L.map((e: number) => { const E = net.edges[e], o = net.nodes[E.a === n ? E.b : E.a]; return [(o.x - N0.x) / E.len, (o.z - N0.z) / E.len]; });

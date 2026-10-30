@@ -43,6 +43,7 @@ export interface CongestionConsts {
 }
 
 export interface NetGenConsts {
+  deadEndJoin: number; avenueMinLen: number; specW: number[]; villageMaxR: number; culDeSacMinGap?: number; ringMinR: number; tangleDeg: number; feederLen: number; hwCellPenalty: number;
   /** мин. расстояние между параллельными дорогами, м */ parallelMin: { lane: number; street: number; avenue: number; highway: number };
   /** мин. шаг перекрёстков вдоль дороги, м */ junctionSpacing: { lane: number; street: number; avenue: number };
   /** мин. угол в узле, град */ minAngleDeg: { lane: number; street: number; avenue: number; highway: number };
@@ -56,7 +57,71 @@ export interface NetGenConsts {
   /** генерация шоссе (запрос Степана): сглаживание rMin по классу (road-curves), мин. шаг наземных развязок, м; запас рампы у эстакады, м;
    *  лимит пересечений одной пары «шоссе × улица» (проверка в tests/netgen); штраф клетки A* за существующую дорогу */
   highway: { junctionStep: number; rampMargin: number; maxCrossPerPair: number; roadCellPenalty: number; segLen: number };
+  /** пояса роста: границы d/r (центр, средний, пригород, окрестности) */ beltBounds: [number, number, number, number];
+  /** вероятность «хаотичного» примыкания в иерархии */ hierarchyNoise: number;
+  /** мин. длина цепочки одного класса, м */ minChainLen: { highway: number; avenue: number; street: number; lane: number };
+  /** шоссе: допустимый крюк, допуск угла пересечения (от 90°), мин. разнос коридоров, шаг развязок в городе, мин. расстояние до повторного слияния ветвей, м */ highwayDetourMax: number; highwayCrossAngleTol: number; highwayCorridorMin: number; interchangeSpacing: number; highwayRejoinMin: number;
+  /** мин. зазор между краями проезжих частей параллельных дорог, м */ minEdgeGap: number;
+  /** сплетения: макс. пересечений пары дорог на 500 м; мин. периметр петли в кварталах; макс. степень узла */ maxCrossingsPerPair: number; minLoopPerimeterBlocks: number; maxNodeDegree: number;
+  /** кольца: мин. население для 1-го, 2-го кольца и обхода-шоссе */ ringMinPop: number; secondRingPop: number; bypassPop: number;
+  /** тупики: множитель ширины соседней дороги, минимум м, макс. продление м, угол продления °, допустимый карман м */ deadEndSnapWidthMult: number; deadEndSnapMin: number; deadEndExtendMax: number; deadEndExtendAngle: number; culDeSacMax: number;
+  /** стыки: длина перехода на метр разницы ширины, мин. длина, макс. излом без дуги ° */ taperLenPerM: number; taperMinLen: number; maxBendDeg: number;
+  /** против заторов: макс. V/C после генерации, раундов исправления */ genMaxVC: number; genFixRounds: number;
+  /** зона перекрёстка: ширина зебры и запас, м; шаг разворотных кругов, м; макс. население посёлка без проспектов */ crosswalkWidth: number; junctionZonePad: number; culDeSacSpacing: number; villageMaxPop: number;
 }
+export interface ZoningBalance {
+  /** глубина лота по классу дороги, м */ depth: { lane: number; street: number; avenue: number; pedestrian: number };
+  /** ширина лота min/max по классу, м */ lotWidth: { lane: [number, number]; street: [number, number]; avenue: [number, number] };
+  /** отступ от красной линии, м */ setback: { lane: number; street: number; avenue: number };
+  /** доля maxL по классу дороги */ levelShare: { lane: number; street: number; avenue: number };
+  /** мин. площадь блока м², мин. глубина лота м, мин. ширина двора м, разброс ширины лота */ minBlockArea: number; minLotDepth: number; courtyardMin: number; lotWidthJitter: number;
+  /** доля площади тайла внутри лота для присвоения зоны */ tileCoverShare: number;
+  /** пороги площади двора: green / driveway / mixed, м² */ courtyardAreaBounds: [number, number, number];
+  /** мест на 100 м² парковки; занятость днём/ночью; мест на квартиру R */ spotsPer100m2: number; parkingOccupancy: [number, number]; spotsPerFlat: number;
+  /** эффект двора-парка на счастье и радиус, м */ courtyardParkEffect: number; courtyardParkRadius: number;
+  /** мин. расстояние въезда во двор от перекрёстка, м */ drivewayFromJunction: number;
+  /** вероятность наследования темы кварталом */ themeKeepProb: number;
+}
+export interface TrafficControlBalance {
+  /** свои: цикл в симуляции, с; угол Y-развилки, °; зазор приоритета, м */ simCycle: number; yForkDeg: [number, number]; priorityGapM: number;
+  /** ёмкость подхода на полосу, авт/ч: uncontrolled, allWayStop */ uncontrolledCap: number; allWayStopCap: number;
+  /** зазоры для второстепенного подхода (HCM), с */ criticalGap: number; followUpTime: number;
+  /** насыщение светофора, авт/ч зелёного; цикл мин/по умолч./макс, с; мин. зелёный с; потерянное время на фазу с */ saturationFlow: number; cycleMin: number; cycleDefault: number; cycleMax: number; minGreen: number; lostTimePerPhase: number;
+  /** порог отдельной левой фазы, авт/ч; интервал адаптации, мин; ночной режим часы [с, до] */ leftPhaseThreshold: number; adaptiveIntervalMin: number; nightBlinkHours: [number, number];
+  /** снижение задержки зелёной волной */ greenWaveDelayCut: number;
+  /** кольцо: [база, коэфф. от потока по кольцу] для 1 и 2 полос */ roundabout1: [number, number]; roundabout2: [number, number];
+  /** стоимость, ₽: priority, stop, signal, roundabout1, roundabout2 */ cost: { priority: number; stop: number; signal: number; roundabout1: number; roundabout2: number };
+  /** содержание, ₽/мес */ upkeep: { priority: number; stop: number; signal: number; roundabout1: number; roundabout2: number };
+  /** ёмкость полосы перегона по классу, авт/ч */ laneCap: { lane: number; street: number; avenue: number; highway: number; ramp: number };
+  /** макс. полос/сторону по классу */ maxLanes: { lane: number; street: number; avenue: number; highway: number; ramp: number };
+  /** множители: одностороннее, запрет левого, автобусная остановка в полосе */ oneWayCapBonus: number; noLeftCapBonus: number; busStopInLanePenalty: number;
+  /** развязки: стоимость ₽, содержание ₽/мес, ёмкость съезда авт/ч */ interchange: {
+    diamond: [number, number, number]; parclo: [number, number, number]; cloverleaf: [number, number, number];
+    turbine: [number, number, number]; trumpet: [number, number, number]; split: [number, number, number];
+  };
+  /** порог потока для выбора клевера vs турбины, авт/ч */ cloverMaxFlow: number;
+  /** разгон/торможение, м; штраф переплетения; длина зоны переплетения, м */ accelLen: number; decelLen: number; weavingPenalty: number; weavingLen: number;
+  /** длина кармана слияния, м; отступ конца полосы ОТ от слияния, м */ mergeTaperLen: number; busLaneEndBeforeMerge: number;
+}
+export interface ConstructionBalance {
+  /** стоимость единицы этажа по уровню здания, ₽/м² */ levelValue: [number, number, number, number, number, number];
+  /** множитель компенсации по зоне */ compensationMult: { R: number; C: number; I: number; O: number };
+  /** переезд: ₽ на жителя / на рабочее место */ moveOutPerResident: number; moveOutPerJob: number;
+  /** счастье за снесённое R-здание и длительность, дней */ happinessPerDemolished: number; demolishMoodDays: number;
+  /** доля выселенных, остающихся в городе */ evicteeStayShare: number;
+  /** снос дерева ₽, коридор подсветки + м */ treeCost: number; corridorPad: number;
+  /** уровни: шаг м, диапазон [min,max] по типу */ levelStep: number;
+  /** B3: наибольшая насыпь/выемка при подгонке рельефа под дорогу, м */ gradeMaxDh: number;
+  levelRange: { road: [number, number]; rail: [number, number]; metro: [number, number]; tram: [number, number] };
+  /** макс. уклон по типу */ maxGrade: { highway: number; avenue: number; street: number; lane: number; rail: number; metro: number; tram: number };
+  /** высоты: земля ≤, насыпь ≤, выемка ≥, м */ groundTol: number; embankmentMaxH: number; cutMaxDepth: number;
+  /** эстакада: база + за метр высоты; тоннель открытый/глубокий; портал ₽; глубина открытого способа, м */ elevatedMult: [number, number]; tunnelMult: [number, number]; tunnelPortalCost: number; cutCoverMaxDepth: number;
+  /** вертикальный зазор дорога / рельс, м */ clearance: { road: number; rail: number };
+  /** рельеф: шаг сетки м, откос 1:n, цены ₽/м³ (насыпь, выемка, вывоз), радиус баланса м, множ. скалы, множ. под водой */ heightStep: number; slopeRatio: number; fillCostPerM3: number; cutCostPerM3: number; haulCostPerM3: number; haulRadius: number; rockMult: number; underwaterMult: number;
+  /** опоры: шаг м, макс. пролёт балка / вантовый, множ. вантового, зазор, сдвиг доля шага, рама ₽, перенос ₽, макс. глубина воды м */ pierSpacing: { road: number; highway: number; rail: number }; maxSpan: [number, number]; cableStayMult: number; pierClearance: number; pierShiftShare: number; portalPierCost: number; pierMoveCost: number; pierMaxWaterDepth: number;
+  /** привязка: к узлу м, к ребру м (+ полуширина) */ snapNode: number; snapEdge: number;
+}
+
 
 export interface RailConsts {
   /** по системам: мин. радиус м, макс. уклон, мин. интервал мин, стоянка мин, содержание пути ₽/км/мес, депо ₽ и вместимость ТС, ёмкость станции пасс/ч, длина платформы м */
@@ -248,6 +313,10 @@ export interface BalanceConstants {
   lines: TransitLinesConsts;
   /** этап H (THEMES_SPEC §5): размер квартала темы, м; режим «Смешанный»: радиус исторического центра, м, и его эпоха (лет игры); годы кольца новостроек; после какого года — base; доля вкраплений; шаг квантования этажей */
   themes: { quarterSize: number; coreRadius: number; coreEpoch: number; ringEpoch: [number, number]; lateEpoch: number; mixShare: number; floorStep: number };
+  /** QA2 п.2: подгрузка чанков по бюджету кадра */ render: { chunkOpsPerFrame: number; chunkMsPerFrame: number; farLots: boolean };
+  zoning: ZoningBalance;
+  trafficControl: TrafficControlBalance;
+  construction: ConstructionBalance;
   alerts: {
     /** порог V/C «пробка» */ congestionVC: number;
     /** порог дефицита товаров (доля неудовлетворённого спроса) */ goodsShortage: number;
@@ -563,9 +632,10 @@ export const BALANCE: BalanceConstants = {
     nodeRecalcMinVC: 0.5,
   },
   netgen: {
+    deadEndJoin: 18, avenueMinLen: 120, specW: [7, 12, 14, 4.5], villageMaxR: 600, /* посёлок ≤ villageMaxPop (5000) — по радиусу */ ringMinR: 2500, tangleDeg: 22, feederLen: 300, hwCellPenalty: 40, // A1 ширины полотна; A7 кольцо от радиуса города, порог «сплетения»; A4 длина проспекта-подводки к шоссе; A3/A5 штраф клеток у шоссе // USER_FEEDBACK_2 A2/A6: порог достраивания тупика (м), мин. длина изолированного проспекта (м)
     parallelMin: { lane: 40, street: 56, avenue: 80, highway: 200 },
     junctionSpacing: { lane: 30, street: 50, avenue: 120 },
-    minAngleDeg: { lane: 30, street: 35, avenue: 45, highway: 15 },
+    minAngleDeg: { lane: 30, street: 35, avenue: 45, highway: 75 },
     highwayResSetback: 30,
     highwayResSetbackWithWall: 15,
     blockMin: 90,
@@ -587,6 +657,35 @@ export const BALANCE: BalanceConstants = {
       pedestrian: { depthTiles: 2, maxLevelShare: 0.8, comDemandMult: 1.3 },
     },
     noAccessDecayDays: 10,
+      beltBounds: [0.25, 0.6, 1.0, 2.0],
+    hierarchyNoise: 0.1,
+    minChainLen: { highway: 1500, avenue: 400, street: 60, lane: 30 },
+    highwayDetourMax: 0.3,
+    highwayCrossAngleTol: 15,
+    highwayCorridorMin: 1500,
+    interchangeSpacing: 1200,
+    highwayRejoinMin: 3000,
+    minEdgeGap: 24,
+    maxCrossingsPerPair: 1,
+    minLoopPerimeterBlocks: 4,
+    maxNodeDegree: 4,
+    ringMinPop: 150000,
+    secondRingPop: 700000,
+    bypassPop: 3000000,
+    deadEndSnapWidthMult: 1.5,
+    deadEndSnapMin: 12,
+    deadEndExtendMax: 40,
+    deadEndExtendAngle: 30,
+    culDeSacMax: 120,
+    taperLenPerM: 10,
+    taperMinLen: 20,
+    maxBendDeg: 20,
+    genMaxVC: 0.85,
+    genFixRounds: 3,
+    crosswalkWidth: 4,
+    junctionZonePad: 2,
+    culDeSacSpacing: 80,
+    villageMaxPop: 5000,
   },
   rail: {
     systems: {
@@ -625,6 +724,7 @@ export const BALANCE: BalanceConstants = {
     oldVehicleBreakdownDaily: 0.01,
   },
   themes: { quarterSize: 120, coreRadius: 1200, coreEpoch: 15, ringEpoch: [10, 40], lateEpoch: 40, mixShare: 0.2, floorStep: 1 },
+  render: { chunkOpsPerFrame: 2, chunkMsPerFrame: 4, farLots: true },
   lines: {
     stopSpacingMin: [250, 250, 600, 1500],
     stopSpacingMax: [800, 800, 2000, 15000],
@@ -644,6 +744,109 @@ export const BALANCE: BalanceConstants = {
     unprofitableOpRatio: 0.5,
     unprofitableMonths: 3,
     deadStopDays: 30,
+  },
+  zoning: {
+    depth: { lane: 24, street: 32, avenue: 48, pedestrian: 24 },
+    lotWidth: { lane: [12, 20], street: [16, 28], avenue: [24, 40] },
+    setback: { lane: 3, street: 4, avenue: 6 },
+    levelShare: { lane: 0.4, street: 0.7, avenue: 1.0 },
+    minBlockArea: 1200,
+    minLotDepth: 12,
+    courtyardMin: 12,
+    lotWidthJitter: 0.15,
+    tileCoverShare: 0.5,
+    courtyardAreaBounds: [400, 2500, 8000],
+    spotsPer100m2: 3.5,
+    parkingOccupancy: [0.3, 0.8],
+    spotsPerFlat: 0.5,
+    courtyardParkEffect: 0.03,
+    courtyardParkRadius: 60,
+    drivewayFromJunction: 20,
+    themeKeepProb: 0.85,
+  },
+  trafficControl: {
+    uncontrolledCap: 500,
+    allWayStopCap: 450,
+    criticalGap: 6.5,
+    followUpTime: 3.5,
+    saturationFlow: 1800,
+    cycleMin: 40,
+    cycleDefault: 90,
+    cycleMax: 150,
+    minGreen: 7,
+    lostTimePerPhase: 4,
+    leftPhaseThreshold: 200,
+    adaptiveIntervalMin: 15,
+    nightBlinkHours: [23, 5],
+    greenWaveDelayCut: 0.35,
+    roundabout1: [1200, 0.6],
+    roundabout2: [2000, 0.8],
+    cost: { priority: 2000, stop: 1000, signal: 25000, roundabout1: 40000, roundabout2: 90000 },
+    simCycle: 30, // цикл светофора в симуляции, с (ускоренное игровое время)
+    yForkDeg: [30, 60],
+    priorityGapM: 30, // второстепенная ждёт, если машина главной ближе, м
+    upkeep: { priority: 20, stop: 10, signal: 300, roundabout1: 150, roundabout2: 300 },
+    laneCap: { lane: 400, street: 700, avenue: 1600, highway: 2000, ramp: 1500 },
+    maxLanes: { lane: 1, street: 2, avenue: 4, highway: 5, ramp: 2 },
+    oneWayCapBonus: 0.1,
+    noLeftCapBonus: 0.15,
+    busStopInLanePenalty: 0.25,
+    interchange: {
+      diamond: [350000, 1500, 1500],
+      parclo: [500000, 2000, 1500],
+      cloverleaf: [900000, 3500, 1200],
+      turbine: [2000000, 6000, 1800],
+      trumpet: [450000, 1800, 1500],
+      split: [300000, 1200, 2000],
+    },
+    cloverMaxFlow: 6000,
+    accelLen: 200,
+    decelLen: 120,
+    weavingPenalty: 0.2,
+    weavingLen: 600,
+    mergeTaperLen: 120,
+    busLaneEndBeforeMerge: 30,
+  },
+  construction: {
+    levelValue: [0, 900, 1400, 2000, 2800, 3800],
+    compensationMult: { R: 1.2, C: 1.0, I: 0.8, O: 1.5 },
+    moveOutPerResident: 1500,
+    moveOutPerJob: 3000,
+    happinessPerDemolished: 0.002,
+    demolishMoodDays: 30,
+    evicteeStayShare: 0.5,
+    treeCost: 50,
+    corridorPad: 2,
+    levelStep: 8,
+    gradeMaxDh: 6,
+    levelRange: { road: [-3, 4], rail: [-4, 4], metro: [-4, -1], tram: [-1, 2] },
+    maxGrade: { highway: 0.05, avenue: 0.06, street: 0.08, lane: 0.1, rail: 0.035, metro: 0.04, tram: 0.06 },
+    groundTol: 1,
+    embankmentMaxH: 6,
+    cutMaxDepth: 6,
+    elevatedMult: [3, 0.1],
+    tunnelMult: [6, 9],
+    tunnelPortalCost: 80000,
+    cutCoverMaxDepth: 8,
+    clearance: { road: 5.5, rail: 6.5 },
+    heightStep: 4,
+    slopeRatio: 2,
+    fillCostPerM3: 12,
+    cutCostPerM3: 18,
+    haulCostPerM3: 6,
+    haulRadius: 500,
+    rockMult: 2,
+    underwaterMult: 3,
+    pierSpacing: { road: 30, highway: 40, rail: 35 },
+    maxSpan: [60, 150],
+    cableStayMult: 2.5,
+    pierClearance: 1.5,
+    pierShiftShare: 0.4,
+    portalPierCost: 40000,
+    pierMoveCost: 15000,
+    pierMaxWaterDepth: 8,
+    snapNode: 6,
+    snapEdge: 4,
   },
   alerts: {
     congestionVC: 0.9,

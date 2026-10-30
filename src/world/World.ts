@@ -65,18 +65,23 @@ export class World {
    *  Работает для любой сети: дорожной (this.net) и рельсовой (this.rail, этап D). */
   liftCache = new Map<number, number>(); railLift = new Map<number, number>();
   nodeLvl(n: number, net = this.net) { let lv = 9; for (const e of net.nodes[n].edges) { const E = net.edges[e]; if (!E.alive) continue; const l = E.lv || 0; if (lv === 9) lv = l; else if (lv !== l) return 0; } return lv === 9 ? 0 : lv; }
+  /** B3 (18 §2): уровни ±1…±N. Узел смешанного уровня одного знака (например 1 и 2) стоит на плато младшего |lv|; разных знаков/с землёй — на земле. */
+  mixedBase(n: number, net = this.net): number { let mn = 99, sg = 0; for (const e of net.nodes[n].edges) { const E = net.edges[e]; if (!E.alive) continue; const l = E.lv || 0; if (!l) return 0; const g = Math.sign(l); if (sg && g !== sg) return 0; sg = g; mn = Math.min(mn, Math.abs(l)); }
+    if (!sg) return 0; const D = sg > 0 ? LEVEL_DECK : (net === this.rail ? METRO_DEPTH : LEVEL_TUN); return mn * D; }
   nodeLift(n: number, net = this.net): number {
     const cache = net === this.net ? this.liftCache : this.railLift; const c = cache.get(n); if (c !== undefined) return c;
     const lv = this.nodeLvl(n, net); let out = 0;
-    if (lv) { const D = lv > 0 ? LEVEL_DECK : (net === this.rail ? METRO_DEPTH : LEVEL_TUN), G = net === this.rail ? RAIL_GRADE : LEVEL_GRADE, maxD = D / G; const dist = new Map<number, number>([[n, 0]]); const q: number[] = [n]; let best = maxD;
-      while (q.length) { q.sort((a, b) => dist.get(b)! - dist.get(a)!); const u = q.pop()!; const du = dist.get(u)!; if (du >= best) break; if (this.nodeLvl(u, net) !== lv) { best = du; break; }
+    if (lv) { const D = Math.abs(lv) * (lv > 0 ? LEVEL_DECK : (net === this.rail ? METRO_DEPTH : LEVEL_TUN)), G = net === this.rail ? RAIL_GRADE : LEVEL_GRADE; const dist = new Map<number, number>([[n, 0]]); const q: number[] = [n]; let best = D / G, base = 0;
+      while (q.length) { q.sort((a, b) => dist.get(b)! - dist.get(a)!); const u = q.pop()!; const du = dist.get(u)!; if (du >= best) break; if (this.nodeLvl(u, net) !== lv) { const mb = this.mixedBase(u, net); if (du + mb / G < best + base / G) { best = du; base = mb; } continue; }
         for (const e of net.nodes[u].edges) { const E = net.edges[e]; if (!E.alive || (E.lv || 0) !== lv) continue; const v = E.a === u ? E.b : E.a; const nd = du + E.len; if (nd < (dist.get(v) ?? Infinity) && nd < best) { dist.set(v, nd); q.push(v); } } }
-      out = lv * Math.min(D, best * G); }
+      out = Math.sign(lv) * Math.min(D, base + best * G); }
+    else out = this.mixedBase(n, net) * (this.nodeSign(n, net));
     cache.set(n, out); return out;
   }
+  nodeSign(n: number, net = this.net) { for (const e of net.nodes[n].edges) { const E = net.edges[e]; if (E.alive && E.lv) return Math.sign(E.lv); } return 0; }
   /** смещение по высоте на ребре e в точке s (м от узла a): рампы, плато на ±D */
   edgeOff(e: number, s: number, net = this.net) { const E = net.edges[e]; const lv = E.lv || 0; if (!lv) return 0; const rail = net === this.rail; const D = lv > 0 ? LEVEL_DECK : rail ? METRO_DEPTH : LEVEL_TUN, G = rail ? RAIL_GRADE : LEVEL_GRADE;
-    const la = Math.abs(this.nodeLift(E.a, net)), lb = Math.abs(this.nodeLift(E.b, net)); return lv * Math.max(0, Math.min(D, la + s * G, lb + (E.len - s) * G)); }
+    const la = Math.abs(this.nodeLift(E.a, net)), lb = Math.abs(this.nodeLift(E.b, net)); return Math.sign(lv) * Math.max(0, Math.min(D * Math.abs(lv), la + s * G, lb + (E.len - s) * G)); }
   /** этап D: рельсовая сеть (ж/д, обособленный трамвай, метро). type: RAIL.* ; lv −1 у метро всегда */
   rail = new RoadNet();
   railChanged(e: number, added: boolean) {

@@ -48,6 +48,8 @@ export class Game {
         case 'zone': T.sub = cmd.t; T.applyZone(V(p[0], p[1]), V(p[2], p[3]), false); break;
         case 'rail': T.lv = (cmd as any).lv || 0; ok = T.buildRail(V(p[0], p[1]), V(p[2], p[3]), cmd.t, false); break;
         case 'bull': T.bulldoze(V(p[0], p[1]), false); break;
+        case 'ctl': ok = T.applyCtl(p[0], p[1], cmd.t); break; // C: режим узла
+        case 'oneway': ok = T.applyOneWay(p[0], p[1], (cmd as any).d); break; // C: одностороннее
         case 'terra': this.world.terraform(p[0], p[1], 60, cmd.t, cmd.h, cmd.s); break;
         case 'place': T.place(V(p[0], p[1]), cmd.t, false); break;
         case 'line': { const st: { x: number; z: number }[] = []; for (let i = 0; i < p.length; i += 2) st.push({ x: p[i], z: p[i + 1] }); ok = !!this.transit.build(cmd.t, st); break; }
@@ -65,17 +67,18 @@ export class Game {
     if (ok && !replay && !['road', 'curve', 'zone', 'bull', 'place', 'line', 'rail'].includes(cmd.a)) this.log({ ...cmd });
     return !!ok;
   }
+  last0 = performance.now();
   log(a: any) { a.m = Math.round(this.eco.minutes); this.actions.push(a); }
   loop() {
     requestAnimationFrame(() => this.loop());
-    const now = performance.now(); const dt = Math.min(0.1, (now - this.last) / 1000); this.last = now; this.fps = this.fps * 0.95 + 0.05 / Math.max(dt, 1e-3);
+    const now = performance.now(); this.last0 = this.last; const dt = Math.min(0.1, (now - this.last) / 1000); this.last = now; this.fps = this.fps * 0.95 + 0.05 / Math.max(dt, 1e-3);
     this.r.ctl.update(dt); const P = ((window as any).prof ||= {}); let tp = performance.now(); const mark = (k: string) => { const t = performance.now(); P[k] = (P[k] || 0) * 0.95 + (t - tp) * 0.05; tp = t; };
     // fixed-timestep simulation
     const sp = SPEEDS[this.speed];
     if (sp > 0) {
-      this.acc += dt * sp; const STEP = 0.5; let n = 0; const t0 = performance.now();
-      while (this.acc >= STEP && n < 40) { this.traffic.camX = this.r.ctl.tx; this.traffic.camZ = this.r.ctl.tz; this.traffic.step(STEP); this.acc -= STEP; n++; if (performance.now() - t0 > 10) { this.acc = 0; break; } }
-      this.ecoAcc += dt * sp * 5; // game minutes (1x: 5 game minutes per real second = BALANCE: 1 мин / 200 мс)
+      this.acc += Math.min(0.5, (now - this.last0) / 1000) * sp; /* QA2 п.3: симуляция не теряет время на медленных кадрах (раньше dt резался до 0.1 с → машины «ползли» при 2–5 FPS) */ const STEP = 0.5; let n = 0; const t0 = performance.now();
+      while (this.acc >= STEP && n < 40) { this.traffic.camX = this.r.ctl.tx; this.traffic.camZ = this.r.ctl.tz; this.traffic.step(STEP); this.acc -= STEP; n++; if (performance.now() - t0 > 25) { this.acc = Math.min(this.acc, 2); break; } }
+      this.ecoAcc += Math.min(0.5, (now - this.last0) / 1000) * sp * 5; // game minutes (1x: 5 game minutes per real second = BALANCE: 1 мин / 200 мс)
       while (this.ecoAcc >= 10) { this.ecoAcc -= 10; this.eco.tick(10 / 60); this.world.gameYear = this.eco.minutes / 1440 / 365; try { (this as any).routes?.frame(); } catch (e) { console.error('routes.frame', e); } }
     }
     mark('sim'); this.tt += dt * sp;
@@ -122,7 +125,7 @@ export class Game {
       const net = w.net; const cx = r.ctl.tx, cz = r.ctl.tz; const RR = 320; const tt = performance.now() / 1000;
       for (let a = Math.floor((cx - RR) / 64); a <= Math.floor((cx + RR) / 64); a++) for (let b = Math.floor((cz - RR) / 64); b <= Math.floor((cz + RR) / 64); b++) {
         const cell = net.nodeGrid.get(a * 131072 + b); if (!cell) continue;
-        for (const id of cell) { const N0 = net.nodes[id]; if (!N0.alive || N0.edges.length < 3) continue;
+        for (const id of cell) { const N0 = net.nodes[id]; if (!N0.alive || N0.edges.length < 3 || this.traffic.nodeMode(id) !== 1) continue; // C: светофор только в режиме «светофор»
           const app: Approach[] = []; for (const e of N0.edges) { const E = net.edges[e]; const oi = E.a === id ? E.b : E.a; const o = net.nodes[oi]; if (!E.alive || !o.alive) continue; app.push({ e, dx: (o.x - N0.x) / E.len, dz: (o.z - N0.z) / E.len, type: E.type, len: E.len, alive: true }); }
           const cd = Math.hypot(N0.x - r.cam.position.x, N0.z - r.cam.position.z);
           for (const sp of placeSignals(N0.x, N0.z, app, Math.min(cd, r.ctl.dist))) { if (np >= 1200) break;

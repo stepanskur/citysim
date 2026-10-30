@@ -13,6 +13,8 @@ export type Cmd =
   | { a: 'curve'; p: [number, number, number, number, number, number]; t: number; lv?: number; m?: number } // a, control, b
   | { a: 'zone'; p: [number, number, number, number]; t: number }          // прямоугольник, Z
   | { a: 'bull'; p: [number, number] }
+  | { a: 'ctl'; p: [number, number]; t: number }                          // C: режим узла 0 авто,1 светофор,2 приоритет,3 без рег.
+  | { a: 'oneway'; p: [number, number]; d: number }                       // C: 1 по ходу, −1 развернуть, 0 снять
   | { a: 'terra'; p: [number, number]; t: number; h: number; s: number }
   | { a: 'place'; p: [number, number]; t: number }
   | { a: 'line'; p: number[]; t: number }                                   // остановки x,z,...; тип LINE_TYPES

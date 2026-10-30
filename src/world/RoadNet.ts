@@ -1,8 +1,11 @@
-export interface RNode { x: number; z: number; edges: number[]; alive: boolean; city: number; outside: boolean }
+/** ctl: режим узла (mechanics/17 §1): 0 авто, 1 светофор, 2 приоритет, 3 без регулирования */
+export interface RNode { x: number; z: number; edges: number[]; alive: boolean; city: number; outside: boolean; ctl?: number }
 /** lv: уровень (0 земля, 1 эстакада/мост, −1 тоннель; mechanics/11 §5); m: модули профиля, биты MOD (mechanics/11 §2) */
 export interface REdge { a: number; b: number; type: number; len: number; alive: boolean; city: number; lv?: number; m?: number }
-export const MOD = { TRAM: 1, BUS: 2 } as const;
-export const LEVEL_NAMES = ['Тоннель', 'Земля', 'Эстакада']; // индекс = lv + 1
+export const MOD = { TRAM: 1, BUS: 2, ONEWAY: 4 } as const; // ONEWAY (B2/C, 17 §5): движение только a→b
+export const LEVEL_NAMES = ['Тоннель', 'Земля', 'Эстакада']; // индекс = lv + 1 (старые уровни −1..1)
+/** B3 (18 §2): имя любого уровня −4..4 */
+export const levelName = (lv: number) => lv === 0 ? 'Земля' : lv > 0 ? (lv === 1 ? 'Эстакада' : `Эстакада ${lv}`) : (lv === -1 ? 'Тоннель' : `Тоннель ${-lv}`);
 export const ROAD_TYPES = [
   { name: 'Улица', w: 9, speed: 13, lanes: 1, cost: 60, upkeep: 0.25, color: 0x5d6066 },
   { name: 'Проспект', w: 15, speed: 17, lanes: 2, cost: 140, upkeep: 0.6, color: 0x505359 },
@@ -137,17 +140,31 @@ export class RoadNet {
     for (let i = 0; i + 1 < pts.length; i++) { if (pts[i].n === pts[i + 1].n) continue; const id = this.addEdge(pts[i].n, pts[i + 1].n, type, city, lv, m); if (id >= 0) out.push(id); }
     return out;
   }
+  /** C (17 §5): одностороннее: d = 0 снять, 1 по направлению ребра, −1 развернуть. Возвращает id ребра. */
+  setOneWay(id: number, d: number): number {
+    const E = this.edges[id]; if (!E || !E.alive) return -1; const m = E.m || 0;
+    if (d === 0) { E.m = m & ~MOD.ONEWAY; this.version++; this.onEdgeAdded?.(id); return id; }
+    if (d > 0) { E.m = m | MOD.ONEWAY; this.version++; this.onEdgeAdded?.(id); return id; }
+    const { a, b, type, city, lv } = E; this.removeEdge(id); return this.addEdge(b, a, type, city, lv || 0, m | MOD.ONEWAY);
+  }
+  /** оба конца сохраняют въезд и выезд (17 §5: «Тупик без выезда») */
+  flowOk(n: number): boolean { const N = this.nodes[n]; let i = 0, o = 0, live = 0;
+    for (const e of N.edges) { const E = this.edges[e]; if (!E.alive) continue; live++; const ow = (E.m || 0) & MOD.ONEWAY; if (!ow) { i++; o++; } else if (E.a === n) o++; else i++; }
+    return live === 0 || (i > 0 && o > 0) || N.outside; }
+  nodesNear(x: number, z: number, r: number): number[] { const out: number[] = [];
+    for (let a = Math.floor((x - r) / NC); a <= Math.floor((x + r) / NC); a++) for (let b = Math.floor((z - r) / NC); b <= Math.floor((z + r) / NC); b++) { const c = this.nodeGrid.get(key(a, b)); if (c) out.push(...c); }
+    return out; }
   serialize() {
     const N = this.nodes.length, E = this.edges.length;
     const nx = new Float32Array(N), nz = new Float32Array(N), nc = new Int16Array(N), nf = new Uint8Array(N);
-    this.nodes.forEach((n, i) => { nx[i] = n.x; nz[i] = n.z; nc[i] = n.city; nf[i] = (n.alive ? 1 : 0) | (n.outside ? 2 : 0); });
+    this.nodes.forEach((n, i) => { nx[i] = n.x; nz[i] = n.z; nc[i] = n.city; nf[i] = (n.alive ? 1 : 0) | (n.outside ? 2 : 0) | ((n.ctl || 0) << 2); });
     const ea = new Int32Array(E), eb = new Int32Array(E), et = new Uint8Array(E), ec = new Int16Array(E), el = new Int8Array(E), em = new Uint8Array(E);
     this.edges.forEach((e, i) => { ea[i] = e.a; eb[i] = e.b; et[i] = e.alive ? e.type : 255; ec[i] = e.city; el[i] = e.lv || 0; em[i] = e.m || 0; });
     return { nx, nz, nc, nf, ea, eb, et, ec, el, em };
   }
   static deserialize(d: any): RoadNet {
     const r = new RoadNet();
-    for (let i = 0; i < d.nx.length; i++) { const id = r.newNode(d.nx[i], d.nz[i], d.nc[i]); r.nodes[id].alive = !!(d.nf[i] & 1); r.nodes[id].outside = !!(d.nf[i] & 2); }
+    for (let i = 0; i < d.nx.length; i++) { const id = r.newNode(d.nx[i], d.nz[i], d.nc[i]); r.nodes[id].alive = !!(d.nf[i] & 1); r.nodes[id].outside = !!(d.nf[i] & 2); if (d.nf[i] >> 2) r.nodes[id].ctl = d.nf[i] >> 2; }
     for (let i = 0; i < d.ea.length; i++) {
       if (d.et[i] === 255) { r.edges.push({ a: d.ea[i], b: d.eb[i], type: 0, len: 1, alive: false, city: d.ec[i] }); continue; }
       r.addEdge(d.ea[i], d.eb[i], d.et[i], d.ec[i], d.el?.[i] || 0, d.em?.[i] || 0);

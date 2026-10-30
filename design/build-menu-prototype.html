@@ -1,0 +1,30 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>CitySim — меню строительства v5</title>
+<link rel="stylesheet" href="ui.css"><style>body{margin:0;height:100vh;background:url(shots/v5-night-build.png) center/cover,#1d2340}</style></head>
+<body class="cs-root"><div class="cs-bm" id="bm"><div class="cs-bm-svc" id="svc"></div><div class="cs-bm-body"><div class="cs-bm-sub" id="sub"></div><div class="cs-bm-cards" id="cards"></div></div></div>
+<div class="cs-tip" id="tip"></div>
+<script>
+const MONEY=120000;
+const MENU=[
+ {id:'roads',ic:'🛣️',nm:'Дороги',hk:'Q',sub:[{nm:'Дороги',c:'#c9c9d6',cards:[['house','Переулок','2 полосы, 30 км/ч. Для жилых кварталов.',40,1,''],['office','Улица','4 полосы, 50 км/ч.',80,2,''],['res-tower','Проспект','6 полос, тротуары 3,5 м, деревья.',160,4,''],['industrial','Шоссе','6 полос, 90 км/ч, без перекрёстков.',320,8,'Нужно население 2 000']]}]},
+ {id:'zones',ic:'▦',nm:'Зоны',hk:'W',sub:[{nm:'Зонирование',c:'#5fe09a',cards:[['house','Жилая','Тема выбирается при зонировании.',0,0,''],['office','Коммерческая','Магазины и офисы.',0,0,''],['industrial','Промышленная','Заводы и склады.',0,0,'']]}]},
+ {id:'social',ic:'🏛️',nm:'Социальные',hk:'E',sub:[{nm:'Образование',c:'#8ab8ff',cards:[['civic','Школа','Охват 600 м, 1 200 учеников.',18000,450,'']]},{nm:'Здоровье',c:'#ff7a6a',cards:[['civic','Поликлиника','Охват 800 м.',22000,600,'']]}]},
+ {id:'transit',ic:'🚌',nm:'Транспорт',hk:'R',sub:[
+  {nm:'Автобусы',c:'#ff7a59',cards:[['bus-stop','Автобусная остановка','Ставится на тротуар. Павильон, 40 пасс.',300,10,''],['bus-depot','Автобусное депо','30 автобусов. Нужно для линий.',24000,800,''],['bus','Автобусная линия','Нарисуйте маршрут по остановкам.',0,40,'']]},
+  {id:'rail',nm:'Ж/д',c:'#7aaaff',cards:[['rail-station','Ж/д вокзал','2 платформы, 4 пути, 3 000 пасс./ч.',60000,1800,''],['rail-platform','Ж/д пути','Секция пути с контактной сетью, 120 м.',1200,15,''],['rail-loco','Ж/д линия','Маршрут поездов между вокзалами.',0,300,'Нет вокзала']]},
+  {nm:'Метро',c:'#c49aff',cards:[['metro-entrance','Станция метро','Вестибюль + подземная платформа.',45000,1400,''],['metro-platform','Тоннель метро','Глубина −12 м, 500 м.',8000,60,''],['metro-entrance','Линия метро','Маршрут поездов.',0,250,'Нет станции']]},
+  {nm:'Трамваи',c:'#1fc7b8',cards:[['tram-stop','Трамвайная остановка','На проезжей части, платформа 30 м.',900,20,''],['tram','Трамвайные пути','На улицу или проспект.',600,8,''],['tram','Трамвайная линия','Маршрут по остановкам.',0,60,'']]}]},
+ {id:'parks',ic:'🌳',nm:'Парки',hk:'T',sub:[{nm:'Парки',c:'#5fe09a',cards:[['tree-oak','Сквер','+15 % привлекательности, 150 м.',3000,40,'']]}]},
+];
+let S=3,T=0,C=-1;const $=id=>document.getElementById(id),fmt=n=>n.toLocaleString('ru-RU')+' ₽';
+function draw(){svc.innerHTML=MENU.map((m,i)=>`<button role="tab" aria-selected="${i==S}" data-i="${i}" title="${m.nm} (${m.hk})"><span class="ic">${m.ic}</span>${m.nm}</button>`).join('');
+ const sub=MENU[S].sub;$('sub').innerHTML=sub.map((s,i)=>`<button aria-selected="${i==T}" data-t="${i}" style="--c:${s.c}"><i></i>${s.nm}</button>`).join('');
+ $('cards').innerHTML=sub[T].cards.map((c,i)=>{const dis=!!c[5],poor=c[3]>MONEY;return `<div class="cs-card ${poor?'poor':''}" style="--i:${i}" data-c="${i}" aria-selected="${i==C}" aria-disabled="${dis}"><span class="hk">${i+1}</span>${dis?'<span class="lock">🔒</span>':''}<img src="cards/${c[0]}.png" alt=""><div class="nm">${c[1]}</div><div class="pr"><b>${c[3]?fmt(c[3]):'—'}</b><span>${c[4]?fmt(c[4])+'/нед':''}</span></div></div>`}).join('');}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-i],[data-t],[data-c]');if(!b)return;if(b.dataset.i){S=+b.dataset.i;T=0;C=-1}else if(b.dataset.t){T=+b.dataset.t;C=-1}else if(b.getAttribute('aria-disabled')!='true')C=+b.dataset.c;draw()});
+document.addEventListener('mouseover',e=>{const k=e.target.closest('.cs-card');if(!k){tip.classList.remove('on');return}const c=MENU[S].sub[T].cards[+k.dataset.c],r=k.getBoundingClientRect();
+ tip.innerHTML=`<h4>${c[1]}</h4><p>${c[2]}</p><dl><dt>Стоимость</dt><dd>${c[3]?fmt(c[3]):'—'}</dd><dt>Содержание</dt><dd>${c[4]?fmt(c[4])+'/нед':'—'}</dd></dl>${c[5]?`<div class="why">🔒 ${c[5]}</div>`:''}`;
+ tip.style.left=Math.min(r.left,innerWidth-296)+'px';tip.style.top=(r.top-tip.offsetHeight-10)+'px';tip.classList.add('on')});
+document.addEventListener('keydown',e=>{const k=e.key.toUpperCase(),i=MENU.findIndex(m=>m.hk==k);if(i>=0){S=i;T=0;C=-1}else if(e.key=='Tab'){e.preventDefault();T=(T+1)%MENU[S].sub.length;C=-1}else if(/^[1-9]$/.test(e.key))C=+e.key-1;else if(e.key=='Escape')C=-1;else return;draw()});
+const h=location.hash.slice(1);if(h){const [s,t,c]=h.split(',').map(Number);S=s;T=t||0;C=c??-1}draw();
+if(location.hash.includes('tip'))setTimeout(()=>document.querySelectorAll('.cs-card')[1].dispatchEvent(new MouseEvent('mouseover',{bubbles:true})),500);
+window.ready=true;
+</script></body></html>

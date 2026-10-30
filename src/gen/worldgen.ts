@@ -1,6 +1,6 @@
 import { mulberry32, Noise, smooth, clamp, lerp, MinHeap } from '../util';
 import { RoadNet, ROAD_TYPES } from '../world/RoadNet';
-import { spacingOk, unifyClasses, repairNetwork } from './netgen';
+import { spacingOk, unifyClasses, repairNetwork, tidyNetwork, smoothHighwayKinks, fixAvenueDeadEnds } from './netgen';
 import { BALANCE } from '../sim/balance';
 import { LEVEL_DECK, LEVEL_GRADE } from '../world/World';
 import { filletPolyline } from '../../design/road-curves';
@@ -159,6 +159,16 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     const bnd = (x: number, z: number) => { const a = Math.atan2(z - c.z, x - c.x); const el = Math.sqrt(an) / Math.hypot(Math.cos(a - ax) / 1, Math.sin(a - ax) * an) ; return el * c.r * (0.7 + 0.45 * nz.fbm(Math.cos(a) * 1.3 + c.id * 10, Math.sin(a) * 1.3, 3) + 0.25 * nz2.n2(x * 0.0015, z * 0.0015)); };
     const inside = (x: number, z: number) => Math.hypot(x - c.x, z - c.z) < bnd(x, z);
     const dens = (x: number, z: number) => nz2.fbm(x * 0.0022 + c.id * 50, z * 0.0022, 3); // district density field
+    // A (13, villageMaxPop 5000): посёлок — главная улица вдоль оси + одна параллельная, связки-переулки; без ядра/секторов/пригородов.
+    // Население при генерации неизвестно — порог по радиусу villageMaxR (≈ 5000 жителей).
+    if (c.r <= BALANCE.netgen.villageMaxR) {
+      const ux = Math.cos(ax), uz = Math.sin(ax), vx = -uz, vz = ux; const half = c.r * 0.85, off = 75 + crnd() * 15, step = 110;
+      const line = (o: number, t: number) => { let px = c.x - ux * half + vx * o, pz = c.z - uz * half + vz * o, ok0 = hAt(px, pz) > 0.6; const n = Math.ceil(2 * half / step);
+        for (let k = 1; k <= n; k++) { const x = c.x - ux * half + ux * 2 * half * k / n + vx * o, z = c.z - uz * half + uz * 2 * half * k / n + vz * o; const ok1 = hAt(x, z) > 0.6; if (ok0 && ok1 && okSeg(px, pz, x, z, 0)) net.addRoad(px, pz, x, z, t, 4, c.id); px = x; pz = z; ok0 = ok1; } };
+      line(0, 0); line(off, 0);
+      const nl = Math.max(2, Math.floor(2 * half / 220)); for (let k = 0; k <= nl; k++) { const s2 = -half * 0.8 + 1.6 * half * k / nl; const ax2 = c.x + ux * s2, az2 = c.z + uz * s2; if (okSeg(ax2, az2, ax2 + vx * off, az2 + vz * off, 0)) net.addRoad(ax2, az2, ax2 + vx * off, az2 + vz * off, 3, 6, c.id); }
+      c.pattern = 'village'; continue;
+    }
     // organic growth (historic core & suburbs)
     const organic = (sx: number, sz: number, rad: number, stepMin: number, stepVar: number, maxE: number, mainType: number, branch: number) => {
       let start = net.nearestNode(sx, sz, 30); if (start < 0) start = net.newNode(sx, sz, c.id);
@@ -199,7 +209,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
       }
     }
     // 2b. кольца (радиальный город) и дополнительные ядра (полицентричный)
-    if (F === 'radial') for (const rf of [0.45]) { const rr = c.r * rf, n = Math.max(12, Math.ceil(rr * Math.PI * 2 / 110)); let px = 0, pz = 0, okp = false; for (let q = 0; q <= n; q++) { const a = q / n * Math.PI * 2, x = c.x + Math.cos(a) * rr, z = c.z + Math.sin(a) * rr; const ok2 = inside(x, z) && hAt(x, z) > 0.6; if (okp && ok2 && okSeg(px, pz, x, z, 120)) net.addRoad(px, pz, x, z, 1, 10, c.id); px = x; pz = z; okp = ok2; } }
+    if (F === 'radial' && c.r >= BALANCE.netgen.ringMinR /* ≈ ringMinPop 150 тыс. (13): по радиусу, население при генерации ещё не известно */) for (const rf of [0.45]) /* A7: кольцо только крупному городу */ { const rr = c.r * rf, n = Math.max(12, Math.ceil(rr * Math.PI * 2 / 110)); let px = 0, pz = 0, okp = false; for (let q = 0; q <= n; q++) { const a = q / n * Math.PI * 2, x = c.x + Math.cos(a) * rr, z = c.z + Math.sin(a) * rr; const ok2 = inside(x, z) && hAt(x, z) > 0.6; if (okp && ok2 && okSeg(px, pz, x, z, 120)) net.addRoad(px, pz, x, z, 1, 10, c.id); px = x; pz = z; okp = ok2; } }
     if (F === 'poly') { const nc = 2 + Math.floor(crnd() * 2); for (let q = 0; q < nc; q++) { const a = crnd() * Math.PI * 2, d = c.r * (0.45 + crnd() * 0.2); const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d; if (hAt(x, z) < 1) continue; organic(x, z, c.r * 0.16, 34, 24, 60, 0, 0.5); net.addRoad(c.x + (x - c.x) / d * core, c.z + (z - c.z) / d * core, x, z, 1, 12, c.id); } }
     // 3. planned districts: sectors with own grid angle & block size; holes left by density field
     const nSec = F === 'grid' || F === 'linear' ? 1 : F === 'radial' ? 6 + Math.floor(crnd() * 3) : 3 + Math.floor(crnd() * 4); const secOff = crnd() * Math.PI * 2;
@@ -264,7 +274,7 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     for (let i = 1; i < P.length - 1; i++) { const d = Math.abs((b[0] - a[0]) * (a[1] - P[i][1]) - (a[0] - P[i][0]) * (b[1] - a[1])) / L; if (d > md) { md = d; mi = i; } }
     if (md <= tol) return [a, b]; const l = dp(P.slice(0, mi + 1), tol), r = dp(P.slice(mi), tol); return [...l.slice(0, -1), ...r]; };
   const segX = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number) => { const den = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx); if (Math.abs(den) < 1e-9) return -1; const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / den, u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / den; return t >= 0 && t <= 1 && u > 0 && u < 1 ? t : -1; };
-  const hwLog = { atGrade: 0, elevated: 0, cut: 0 };
+  const hwLog = { atGrade: 0, elevated: 0, cut: 0, hwMeet: 0 };
   const addHighway = (pts: [number, number][], startNode: number, endNode: number) => {
     if (pts.length < 2) return;
     const raw = pts.slice(); if (startNode >= 0) raw[0] = [net.nodes[startNode].x, net.nodes[startNode].z]; if (endNode >= 0) raw.push([net.nodes[endNode].x, net.nodes[endNode].z]);
@@ -296,8 +306,9 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     const cl: { s: number; e: number }[][] = []; for (const x of X) { const c = cl[cl.length - 1]; if (c && x.s - c[c.length - 1].s < 2 * RAMP) c.push(x); else cl.push([x]); }
     const elev: [number, number][] = []; let lastJ = startNode >= 0 ? 0 : -1e9;
     for (const c of cl) { const s0 = c[0].s, s1 = c[c.length - 1].s;
-      if (c.length === 1 && s0 - lastJ >= HWC.junctionStep && Ltot - s0 >= HWC.junctionStep * 0.5) { lastJ = s0; hwLog.atGrade++; continue; }
+      if (c.length === 1 && net.edges[c[0].e].type === 1 /* A4: в уровне шоссе встречает только проспект */ && s0 - lastJ >= HWC.junctionStep && Ltot - s0 >= HWC.junctionStep * 0.5) { lastJ = s0; hwLog.atGrade++; continue; }
       if (s0 - RAMP > 0 && s1 + RAMP < Ltot) { elev.push([s0 - RAMP, s1 + RAMP]); hwLog.elevated += c.length; continue; }
+      if (c.some(x => net.edges[x.e].type === 2)) { hwLog.hwMeet++; continue; } // у конца трассы (рампа не помещается) шоссе сходятся в общем узле-развязке // A3: шоссе × шоссе — только эстакадой
       for (const x of c) if (net.edges[x.e].alive && net.edges[x.e].type !== 2) { net.removeEdge(x.e); hwLog.cut++; } }
     // слить интервалы и вставить их границы в полилинию
     elev.sort((a, b) => a[0] - b[0]); const EV: [number, number][] = []; for (const v of elev) { const l = EV[EV.length - 1]; if (l && v[0] <= l[1] + 1) l[1] = Math.max(l[1], v[1]); else EV.push([...v] as [number, number]); }
@@ -305,7 +316,10 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
     for (const [a, b] of EV) for (const s of [a, b]) { if (P.some(p => Math.abs(p.s - s) < 8)) continue; P.push(at(s)); P.sort((p, q) => p.s - q.s); }
     for (let k = 0; k + 1 < P.length; k++) { const m = (P[k].s + P[k + 1].s) / 2; const lv = EV.some(([a, b]) => m > a && m < b) ? 1 : 0;
       const snap = k === 0 || k + 2 === P.length ? 14 : 2; net.addRoad(P[k].x, P[k].z, P[k + 1].x, P[k + 1].z, 2, snap, -1, lv); }
+    // A3/A5: клетки вдоль готового шоссе дороги — следующее шоссе не идёт рядом и не «косичкой», а пересекает коротко (почти перпендикулярно)
+    for (const p of P) { const i0 = Math.floor(p.x / G), j0 = Math.floor(p.z / G); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const i = i0 + a, j = j0 + b; if (i >= 0 && j >= 0 && i < GN && j < GN && !hwMark[j * GN + i]) { hwMark[j * GN + i] = 1; gcost[j * GN + i] += BALANCE.netgen.hwCellPenalty; } } }
   };
+  const hwMark = new Uint8Array(GN * GN);
   const centerNode = (c: CityInfo) => net.findNode(c.x, c.z, c.r);
   // «ворота» города: шоссе подходит к узлу на полпути от центра в сторону цели, а не в центр
   const gateNode = (c: CityInfo, tx: number, tz: number) => { const d = Math.hypot(tx - c.x, tz - c.z) || 1; const g = net.findNode(c.x + (tx - c.x) / d * c.r * 0.55, c.z + (tz - c.z) / d * c.r * 0.55, c.r * 0.35); return g >= 0 ? g : centerNode(c); };
@@ -346,9 +360,12 @@ export function genWorld(seed: number, sizeIdx: number, progress?: (s: string) =
       for (const e of net.edgesNear((ax + bx) / 2, (az + bz) / 2, L / 2 + 80)) { const E = net.edges[e]; if (!E.alive || E.type !== 2) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const t = segX(ax, az, bx, bz, A.x, A.z, B.x, B.z); if (t > 0.01 && t < 0.99) cross++; }
       for (let q = 0; q <= n; q++) { const x = ax + (bx - ax) * q / n, z = az + (bz - az) * q / n; for (const e of net.edgesNear(x, z, 60)) { const E = net.edges[e]; if (!E.alive || E.type !== 2) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const vx = B.x - A.x, vz = B.z - A.z; const t = clamp(((x - A.x) * vx + (z - A.z) * vz) / (vx * vx + vz * vz || 1), 0, 1); if (Math.hypot(A.x + vx * t - x, A.z + vz * t - z) < 60) { near++; break; } } }
       return cross > 1 || near / (n + 1) > 0.25; };
+    { const td = tidyNetwork(net, BALANCE.netgen.specW); genLog.push(`чистка сети: дублей ${td.dup}, тупиков достроено ${td.dead}, коротких проспектов ${td.shortAv}, сплетений ${td.tangle}, подводок к шоссе ${td.feeder}`); }
     if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), genLog,
       (a, b) => { const A = net.nodes[a], B = net.nodes[b]; addHighway(gpath(A.x, A.z, B.x, B.z), a, b); });
-    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push(`шоссе: развязок ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}`); (globalThis as any).__netgenLog = genLog; }
+    // второй проход чистки: починка связности и шоссе-перемычки могли дать новые дубли/тупики
+    for (let pass = 0; pass < 2; pass++) { const td = tidyNetwork(net, BALANCE.netgen.specW); genLog.push(`чистка-${pass + 2}: дублей ${td.dup}, тупиков ${td.dead}, сплетений ${td.tangle}`); if (mn >= 0) repairNetwork(net, mn, (ax, az, bx, bz) => okSeg(ax, az, bx, bz, 400) && !hwConflict(ax, az, bx, bz), genLog); }
+    genLog.push('классы выровнены в узлах: ' + unifyClasses(net)); genLog.push('проспектов-тупиков исправлено: ' + fixAvenueDeadEnds(net)); genLog.push('изломов шоссе снято: ' + smoothHighwayKinks(net)); genLog.push(`шоссе: развязок ${hwLog.atGrade}, под эстакадой ${hwLog.elevated}, обрывов улиц ${hwLog.cut}, стыков шоссе ${hwLog.hwMeet}`); (globalThis as any).__netgenLog = genLog; }
   progress?.('Зонирование...');
   const road = new Uint8Array(N * N);
   for (const e of net.edges) { if (!e.alive) continue; const A = net.nodes[e.a], B = net.nodes[e.b]; markRoadTiles(N, road, A.x, A.z, B.x, B.z, e.type, ROAD_TYPES[e.type].w); }

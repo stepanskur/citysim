@@ -4,11 +4,12 @@ import { createGroundMaterial, groundUniforms, surfaceWeights, groundSplatColor,
 import { buildJunction, padRadiusFor, roadMaterials, type Arm } from '../../design/road-kit';
 import { ROAD_SPEC, GROUND } from '../../design/palette';
 import { buildBridge, buildTunnelPortal } from '../../design/road-kit-v2';
+import { createTrafficNeonMaterial, nightUniforms } from '../../design/night';
 import { profileWidthOf } from '../world/roadProfiles';
 const SWC = new THREE.Color(ROAD_SPEC.color.sidewalk);
 const MEDC = new THREE.Color(GROUND.grass); const FARMINOR = new THREE.Color(0xb3b494);
-const ASPH = [0x7a7e8b, 0x454a5c, 0x3c4154, 0x868995]; // фикс «белых»: улица 0x9a9ea9→0x7a7e8b (на солнце и на светлом настиле читалась белой), иерархия сохранена; // V9: улица/переулок светлые, магистрали тёмные
-const WMUL = [0.9, 1.2, 1.15, 0.85]; // V9: магистрали шире, улицы уже (только полотно рёбер)
+const ASPH = [0x7a7e8b, 0x575b6c, 0x50546a, 0x868995]; // QA2 п.4: магистрали/шоссе по ROADS_SPEC (palette ROAD_SPEC.color.asphalt), не «чёрные»; // фикс «белых»: улица 0x9a9ea9→0x7a7e8b (на солнце и на светлом настиле читалась белой), иерархия сохранена; // V9: улица/переулок светлые, магистрали тёмные
+const WMUL = [0.9, 1.0, 1.0, 0.85]; // QA2 п.4: ширина проспекта/шоссе ровно ROAD_SPEC.asphalt // V9: магистрали шире, улицы уже (только полотно рёбер)
 /** Перекраска площадки перекрёстка дизайнера в нашу иерархию цветов асфальта. */
 function recolorJunction(g: THREE.BufferGeometry, mainType: number) {
   const ca = g.attributes.color as THREE.BufferAttribute; const tc = new THREE.Color(); const src = [ROAD_SPEC.color.pad, ...ROAD_SPEC.color.asphalt].map(h => new THREE.Color(h)); const dst = [ASPH[mainType], ...ASPH].map(h => new THREE.Color(h));
@@ -62,6 +63,7 @@ export const QUALITIES: Quality[] = [
 interface Chunk { id: number; terrain?: THREE.Mesh; tStep: number; roads?: THREE.Mesh; bridges?: THREE.Mesh; rStep?: number; marks?: THREE.Mesh; blds: THREE.Object3D[]; bDetail: number }
 
 const C = (h: number) => new THREE.Color(h);
+const OV_R = new THREE.Color(0xb08f7c), OV_C = new THREE.Color(0x8d97ad), OV_I = new THREE.Color(0xa59670);
 const COL = { sand: C(0xd9c98f), grass: C(0x7fae55), grass2: C(0x6a9c48), forest: C(0x5f9148), rock: C(0x8a8378), snow: C(0xf2f2f2), fert: C(0xa9b85a), ore: C(0x9a7f6a), oil: C(0x5c5a52), under: C(0x6f8f7a),
   zr: C(0x8fd17a), zc: C(0x7aaee6), zi: C(0xe6c76a) };
 
@@ -84,7 +86,8 @@ export class Renderer {
   stats = { tris: 0, calls: 0 };
   /** этап D: режим метро (RailView, design/metro-view): поверхность полупрозрачная, тоннели/платформы видны «рентгеном» */
   metroManual = false; rail!: RailView;
-  setMetroView(on: boolean) { if (!this.rail) return; this.rail.patch([this.terrainMat, this.roadMat, this.bldMat, this.plainMat, this.bridgeMat, this.marksMat]); this.rail.setOn(on); }
+  setMetroView(on: boolean) { if (!this.rail) return; this.rail.patch([this.terrainMat, this.roadMat, this.bldMat, this.plainMat, this.bridgeMat, this.marksMat, this.styledMat, this.skirtMat, this.ovMat, this.farMat]); this.rail.setOn(on); this.water.visible = !on; /* QA2 п.5: вода не заливает вид бирюзой; дома (styledMat) и подложка тоже «стекло» */ }
+  skirtMat = createGroundMaterial({ polygonOffset: true, polygonOffsetFactor: 8, polygonOffsetUnits: 8 }); ovMat = createGroundMaterial(); // QA2 п.1: без polygonOffset — на крутом угле он «топил» подложку под воду (смещение по наклону)
   constructor(public world: World, public canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.q.pixelRatio));
@@ -154,7 +157,7 @@ export class Renderer {
       const sk = mergeGeometries(parts)!; const pa = sk.attributes.position as THREE.BufferAttribute; const cl = new Float32Array(pa.count * 3); const gc = new THREE.Color(GROUND.grass);
       for (let v = 0; v < pa.count; v++) { const x = pa.getX(v), z = pa.getZ(v); const ex = Math.min(Math.max(x, 1), M - 1), ez = Math.min(Math.max(z, 1), M - 1); const out = Math.hypot(x - ex, z - ez); pa.setY(v, out < 1 ? Math.max(world.hAt(ex, ez), 0.5) - 1.2 : 0.8); /* этап A: кромка ниже земли карты — нет z-fighting */ cl[v * 3] = gc.r; cl[v * 3 + 1] = gc.g; cl[v * 3 + 2] = gc.b; }
       sk.setAttribute('color', new THREE.BufferAttribute(cl, 3)); sk.computeVertexNormals();
-      this.scene.add(new THREE.Mesh(sk, createGroundMaterial({ polygonOffset: true, polygonOffsetFactor: 8, polygonOffsetUnits: 8 })));
+      this.scene.add(new THREE.Mesh(sk, this.skirtMat));
     }
     this.resize(); window.addEventListener('resize', () => this.resize());
   }
@@ -200,12 +203,28 @@ export class Renderer {
     const w = this.world; const R = Math.min(256, w.N); const st = w.N / R;
     const g = new THREE.PlaneGeometry(w.M, w.M, R, R); g.rotateX(-Math.PI / 2); g.translate(w.M / 2, 0, w.M / 2);
     const pos = g.attributes.position as THREE.BufferAttribute; const col = new Float32Array(pos.count * 3); const c = new THREE.Color();
-    for (let v = 0; v < pos.count; v++) { const x = pos.getX(v), z = pos.getZ(v); pos.setY(v, w.hAt(Math.min(x, w.M - 1), Math.min(z, w.M - 1)) - 1.5); this.tileColor(Math.floor(x / TILE), Math.floor(z / TILE), c); col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b; }
+    for (let v = 0; v < pos.count; v++) { const x = pos.getX(v), z = pos.getZ(v); { const hh = w.hAt(Math.min(x, w.M - 1), Math.min(z, w.M - 1)); pos.setY(v, hh > 0 ? Math.max(hh - 1.5, hh * 0.5) : hh - 1.5); } /* QA2 п.1: низкая суша подложки не уходит под воду (раньше h−1.5 < 0 → «море» вместо суши) */ { const ti = Math.min(w.N - 1, Math.floor(x / TILE)), tj = Math.min(w.N - 1, Math.floor(z / TILE)); this.tileColor(ti, tj, c); const k = tj * w.N + ti; if (this.overlay === 'none' && w.bld[k]) { const zz = w.zone[k]; c.lerp(zz === Z.C ? OV_C : zz === Z.I ? OV_I : OV_R, 0.55); } } /* QA2 п.9: кварталы вдали — мягкий цвет зоны, а не белая «сетка» */ col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b; }
     void st;
     g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals();
-    const mat = createGroundMaterial({ polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 }); // V8: тот же материал, что у земли и «юбки» — без светлого квадрата
+    const mat = this.ovMat; // V8: тот же материал, что у земли и «юбки» — без светлого квадрата
     if (this.overview) { this.scene.remove(this.overview); this.overview.geometry.dispose(); }
-    this.overview = new THREE.Mesh(g, mat); this.overview.receiveShadow = false; this.overview.renderOrder = 1; // V11: после земли чанков — перекрытые пиксели отсекаются по глубине this.scene.add(this.overview);
+    this.overview = new THREE.Mesh(g, mat); this.overview.receiveShadow = false; this.overview.renderOrder = 1; // V11: после земли чанков — перекрытые пиксели отсекаются по глубине
+    this.buildFarRoads();
+    this.scene.add(this.overview); // QA2 п.1: подложка всей карты ВСЕГДА в сцене (раньше add был проглочен комментарием → «море» вне чанков)
+  }
+  farRoads?: THREE.Mesh; farMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  /** QA2 п.1/4: магистрали и шоссе всей карты одной дешёвой лентой поверх подложки (под землёй чанков — там видны детальные дороги); концы скруглены. */
+  buildFarRoads() {
+    const w = this.world, net = w.net; const pos: number[] = [], col: number[] = []; const c = new THREE.Color();
+    const tri = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number) => { pos.push(ax, ay, az, bx, by, bz, cx, cy, cz); for (let q = 0; q < 3; q++) col.push(c.r, c.g, c.b); };
+    const Y = (x: number, z: number) => { const h = w.hAt(x, z); if (h <= 0) return 0.3; const ov = Math.max(h - 1.5, h * 0.5); return ov + Math.min(0.4, (h - ov) * 0.6); }; // между подложкой и землёй чанков
+    for (const E of net.edges) { if (!E.alive || (E.type !== 1 && E.type !== 2)) continue; const A = net.nodes[E.a], B = net.nodes[E.b]; const hw = ROAD_SPEC.asphalt[E.type] / 2 + 1; const L = Math.max(E.len, 1e-3); const dx = (B.x - A.x) / L, dz = (B.z - A.z) / L; c.setHex(ASPH[E.type]);
+      const n = Math.max(1, Math.ceil(L / 40)); for (let s = 0; s < n; s++) { const x0 = A.x + (B.x - A.x) * s / n, z0 = A.z + (B.z - A.z) * s / n, x1 = A.x + (B.x - A.x) * (s + 1) / n, z1 = A.z + (B.z - A.z) * (s + 1) / n; const y0 = Y(x0, z0), y1 = Y(x1, z1);
+        tri(x0 - dz * hw, y0, z0 + dx * hw, x1 + dz * hw, y1, z1 - dx * hw, x1 - dz * hw, y1, z1 + dx * hw); tri(x0 - dz * hw, y0, z0 + dx * hw, x0 + dz * hw, y0, z0 - dx * hw, x1 + dz * hw, y1, z1 - dx * hw); }
+      for (const N0 of [A, B]) { const y = Y(N0.x, N0.z); for (let k = 0; k < 8; k++) { const a0 = k / 8 * Math.PI * 2, a1 = (k + 1) / 8 * Math.PI * 2; tri(N0.x, y, N0.z, N0.x + Math.cos(a1) * hw, y, N0.z + Math.sin(a1) * hw, N0.x + Math.cos(a0) * hw, y, N0.z + Math.sin(a0) * hw); } } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); const nr = new Float32Array(pos.length); for (let i = 1; i < nr.length; i += 3) nr[i] = 1; g.setAttribute('normal', new THREE.BufferAttribute(nr, 3));
+    if (this.farRoads) { this.scene.remove(this.farRoads); this.farRoads.geometry.dispose(); }
+    this.farRoads = new THREE.Mesh(g, this.farMat); this.farRoads.renderOrder = 1; this.scene.add(this.farRoads);
   }
   // ---------- chunk building ----------
   buildTerrain(ch: Chunk, step: number) {
@@ -228,7 +247,7 @@ export class Renderer {
     ch.tStep = step;
   }
   roadColor(e: number, type: number, c: THREE.Color) {
-    if (this.overlay === 'traffic') { const l = clamp(this.edgeLoad(e), 0, 1.2); if (l < 0.5) c.setRGB(0.2 + l * 1.4, 0.8, 0.25); else c.setRGB(0.95, clamp(1.6 - l * 1.4, 0, 0.8), 0.15); return c; }
+    if (this.overlay === 'traffic') { c.setHex(0x1a2238); return c; } // C2: асфальт в «ночном видении», загрузку рисует неоновая лента (neonFrame)
     return c.setHex(ASPH[type] ?? (type === 4 ? 0x8c857a : ASPH[0])); // V8: улица светлее, проспект/шоссе темнее — иерархия читается // светло-серый асфальт (палитра)
   }
   padR(n: number) { const net = this.world.net; return padRadiusFor(net.nodes[n].edges.filter(e => net.edges[e].alive).map(e => ({ dx: 0, dz: 0, type: net.edges[e].type, len: 0 }))); }
@@ -238,15 +257,17 @@ export class Renderer {
   buildLevel(e: number, out: THREE.BufferGeometry[]) {
     const w = this.world, net = w.net, E = net.edges[e], A = net.nodes[E.a], B = net.nodes[E.b]; const lv = E.lv || 0; const dx = (B.x - A.x) / E.len, dz = (B.z - A.z) / E.len;
     const wd = Math.min(profileWidthOf(E.type), ROAD_SPEC.asphalt[E.type] + 2); const at = (s: number) => ({ x: A.x + dx * s, z: A.z + dz * s });
+    // B4: опора эстакады не ставится на дорогу под ней — если точка опоры попадает на наземное полотно (+ запас), пролёт идёт без этой опоры
+    const pierOk = (s: number) => { const p = at(s); for (const f of net.edgesNear(p.x, p.z, 30)) { if (f === e) continue; const F = net.edges[f]; if (!F.alive || (F.lv || 0) > 0) continue; const P = net.nodes[F.a], Q = net.nodes[F.b]; const vx = Q.x - P.x, vz = Q.z - P.z; const t = Math.max(0, Math.min(1, ((p.x - P.x) * vx + (p.z - P.z) * vz) / (vx * vx + vz * vz || 1))); if (Math.hypot(P.x + vx * t - p.x, P.z + vz * t - p.z) < ROAD_SPEC.asphalt[F.type] / 2 + ROAD_SPEC.curbW + ROAD_SPEC.sidewalk[F.type] + 2.5) return false; } return true; };
     if (lv > 0) { const n = Math.max(1, Math.ceil(E.len / BALANCE.roads.pierSpacing)); for (let k = 0; k < n; k++) { const s0 = E.len * k / n, s1 = E.len * (k + 1) / n, sm = (s0 + s1) / 2; const p = at(sm);
         const ya = w.roadY(at(s0).x, at(s0).z) + w.edgeOff(e, s0), yb = w.roadY(at(s1).x, at(s1).z) + w.edgeOff(e, s1);
         if (Math.abs(ya - yb) > 0.15) { // рампа: плоский пролёт на высоте середины торчал над наклонным асфальтом светлой «ступенькой» — режем на куски по 6 м ниже полотна
           const m = Math.ceil((s1 - s0) / 6); for (let q = 0; q < m; q++) { const u0 = s0 + (s1 - s0) * q / m, u1 = s0 + (s1 - s0) * (q + 1) / m; const pa = at(u0), pb = at(u1);
             const y = Math.min(w.roadY(pa.x, pa.z) + w.edgeOff(e, u0), w.roadY(pb.x, pb.z) + w.edgeOff(e, u1)) - 0.25; const gy = w.hAt((pa.x + pb.x) / 2, (pa.z + pb.z) / 2); if (y - Math.max(gy, 0) < 2) continue;
-            try { out.push(buildBridge([pa, pb], wd, y, Math.min(gy, y - 3), q === m - 1 ? (u1 - u0) * 0.999 : 1e6)); } catch { /* */ } }
+            try { out.push(buildBridge([pa, pb], wd, y, Math.min(gy, y - 3), q === m - 1 && pierOk(u1) ? (u1 - u0) * 0.999 : 1e6)); } catch { /* */ } }
           continue; }
         const y = Math.min(ya, yb, w.roadY(p.x, p.z) + w.edgeOff(e, sm)) - 0.25; const gy = w.hAt(p.x, p.z); if (y - Math.max(gy, 0) < 2) continue;
-        try { out.push(buildBridge([at(s0), at(s1)], wd, y, Math.min(gy, y - 3), (s1 - s0) * 0.999)); } catch { /* вырожденный */ } } }
+        try { out.push(buildBridge([at(s0), at(s1)], wd, y, Math.min(gy, y - 3), pierOk(s1) ? (s1 - s0) * 0.999 : 1e6)); } catch { /* вырожденный */ } } }
     else { const steps = Math.ceil(E.len / 2); let prev = w.edgeOff(e, 0); for (let k = 1; k <= steps; k++) { const s = E.len * k / steps, o = w.edgeOff(e, s);
         if ((prev > -1.5) !== (o > -1.5)) { const p = at(s); const t = o < prev ? { x: dx, z: dz } : { x: -dx, z: -dz }; try { out.push(buildTunnelPortal(p, t, wd, 6, w.roadY(p.x, p.z) + o - 0.2)); } catch { /* */ } }
         prev = o; } }
@@ -264,11 +285,15 @@ export class Renderer {
       if (!lv && ch.rStep !== 2 && E.type !== 3) { let wet = 0, gmin = 1e9; for (let q = 1; q < 8; q++) { const h = w.hAt(A.x + (B.x - A.x) * q / 8, A.z + (B.z - A.z) * q / 8); gmin = Math.min(gmin, h); if (h < 0.3) wet++; }
         if (wet >= 2) { const y = Math.max(w.roadY(A.x, A.z), w.roadY(B.x, B.z), 2.5); try { bridgeG.push(buildBridge([{ x: A.x, z: A.z }, { x: B.x, z: B.z }], Math.min(profileWidthOf(E.type), ROAD_SPEC.asphalt[E.type] + 2), y, Math.min(gmin, -1))); } catch { /* вырожденный */ } } }
       const far = ch.rStep >= 2; const minor = E.type === 0 || E.type === 3; const hw = ROAD_SPEC.asphalt[E.type] / 2 * WMUL[E.type] * (far && minor ? 1.1 : 1); const dx = (B.x - A.x) / E.len, dz = (B.z - A.z) / E.len; const px = -dz * hw, pz = dx * hw;
+      // B1: плавный переход ширины на стыке разных классов (узел степени 2) — узкое полотно и тротуар расширяются к узлу на длине taper (13: taperLenPerM·Δw, ≥ taperMinLen), без «ступеньки»
+      const wideAt = (nn: number) => { const L = net.nodes[nn].edges.filter(x => x !== e && net.edges[x].alive); if (L.length !== 1) return 0; const t2 = net.edges[L[0]].type; if (t2 === E.type || t2 === 2 || (net.edges[L[0]].lv || 0) !== lv) return 0; return Math.max(0, ROAD_SPEC.asphalt[t2] / 2 * WMUL[t2] - hw); };
+      const dA = far ? 0 : wideAt(E.a), dB = far ? 0 : wideAt(E.b); const NGB = BALANCE.netgen as any; const tl = (d: number) => Math.min(E.len * 0.45, Math.max(NGB.taperMinLen ?? 20, d * 2 * (NGB.taperLenPerM ?? 10)));
+      const extra = (sd: number) => (dA > 0 ? dA * Math.max(0, 1 - sd / tl(dA)) : 0) + (dB > 0 ? dB * Math.max(0, 1 - (E.len - sd) / tl(dB)) : 0);
       this.roadColor(e, E.type, c); if (far && minor && this.overlay === 'none') c.lerp(FARMINOR, 0.75); // V9: вдали второстепенные улицы растворяются в массе кварталов
-      const steps = Math.max(1, Math.ceil(E.len / (lv ? 6 : 14)));
+      const steps = Math.max(1, Math.ceil(E.len / (lv ? 6 : dA || dB ? 5 : 14)));
       if (E.type !== 2 && !far && lv <= 0) { // sidewalks (на эстакаде — нет: тротуар шире настила висел в воздухе белой полосой)
         const sw = hw + ROAD_SPEC.curbW + ROAD_SPEC.sidewalk[E.type]; const qx = -dz * sw, qz = dx * sw; const b1 = pos.length / 3;
-        for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.sidewalk - 0.1; pos.push(x + qx, y, z + qz, x - qx, y, z - qz); col.push(SWC.r, SWC.g, SWC.b, SWC.r, SWC.g, SWC.b); }
+        for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.sidewalk - 0.1; const k3 = 1 + extra(E.len * s / steps) / sw; pos.push(x + qx * k3, y, z + qz * k3, x - qx * k3, y, z - qz * k3); col.push(SWC.r, SWC.g, SWC.b, SWC.r, SWC.g, SWC.b); }
         for (let s = 0; s < steps; s++) { const p = b1 + s * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
       }
       for (let s = 0; s < steps && !lv; s++) { // bridge sides
@@ -279,10 +304,11 @@ export class Renderer {
           idx.push(b3, b3 + 2, b3 + 1, b3 + 1, b3 + 2, b3 + 3, b3, b3 + 1, b3 + 2, b3 + 1, b3 + 3, b3 + 2); }
       }
       const base = pos.length / 3;
-      for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.asphalt - 0.1 + E.type * 0.005; pos.push(x + px, y, z + pz, x - px, y, z - pz); col.push(c.r, c.g, c.b, c.r, c.g, c.b); }
+      for (let s = 0; s <= steps; s++) { const x = A.x + (B.x - A.x) * s / steps, z = A.z + (B.z - A.z) * s / steps; const y = Y(x, z, E.len * s / steps) + ROAD_SPEC.y.asphalt - 0.1 + E.type * 0.005; const k2 = 1 + extra(E.len * s / steps) / hw; pos.push(x + px * k2, y, z + pz * k2, x - px * k2, y, z - pz * k2); col.push(c.r, c.g, c.b, c.r, c.g, c.b); }
       for (let s = 0; s < steps; s++) { const p = base + s * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
       // V8: проспект — зелёный разделитель, шоссе/проспект — белые краевые линии
-      const strip = (o0: number, o1: number, dy: number, cr: number, cg: number, cb: number) => { const b4 = pos.length / 3; for (let s2 = 0; s2 <= steps; s2++) { const x = A.x + (B.x - A.x) * s2 / steps, z = A.z + (B.z - A.z) * s2 / steps; const y = Y(x, z, E.len * s2 / steps) + ROAD_SPEC.y.asphalt - 0.1 + dy; pos.push(x - dz * o0, y, z + dx * o0, x - dz * o1, y, z + dx * o1); col.push(cr, cg, cb, cr, cg, cb); } for (let s2 = 0; s2 < steps; s2++) { const p = b4 + s2 * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); } };
+      const deg = (nn: number) => net.nodes[nn].edges.filter(x => net.edges[x].alive).length; const cA = deg(E.a) >= 3 && !far ? Math.min(E.len * 0.45, this.padR(E.a)) : 0, cB = deg(E.b) >= 3 && !far ? Math.min(E.len * 0.45, this.padR(E.b)) : 0; // B1: разметка/разделитель не заходят на площадку перекрёстка (белые полосы поперёк стыка)
+      const strip = (o0: number, o1: number, dy: number, cr: number, cg: number, cb: number) => { const b4 = pos.length / 3; for (let s2 = 0; s2 <= steps; s2++) { const u = (cA + (E.len - cA - cB) * s2 / steps) / E.len; const x = A.x + (B.x - A.x) * u, z = A.z + (B.z - A.z) * u; const y = Y(x, z, E.len * u) + ROAD_SPEC.y.asphalt - 0.1 + dy; pos.push(x - dz * o0, y, z + dx * o0, x - dz * o1, y, z + dx * o1); col.push(cr, cg, cb, cr, cg, cb); } for (let s2 = 0; s2 < steps; s2++) { const p = b4 + s2 * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); } };
       if (this.overlay === 'none' && (E.type === 1 || E.type === 2)) { // разделитель + краевые линии (видны и вдали)
         if (E.type === 1) { const m = ROAD_SPEC.median[1] / 2; strip(-m, m, 0.03, MEDC.r, MEDC.g, MEDC.b); }
         for (const sg of [1, -1]) strip(sg * (hw - 0.55), sg * (hw - 0.4), 0.025, 0.92, 0.91, 0.88);
@@ -292,6 +318,9 @@ export class Renderer {
       if (em && this.overlay === 'none') {
         if (em & MOD.TRAM) { const tc = E.type === 0 || E.type === 3 ? [0] : [-hw * 0.28, hw * 0.28]; for (const o of tc) for (const r of [-0.762, 0.762]) { strip(o + r - 0.06, o + r + 0.06, 0.035, 0.55, 0.56, 0.6); strip(o + r - 0.16, o + r - 0.06, 0.033, 0.22, 0.22, 0.24); } }
         if (em & MOD.BUS) for (const sg of [1, -1]) strip(sg * (hw - 3.1), sg * (hw - 0.4), 0.03, 0.62, 0.27, 0.24);
+        if (em & MOD.ONEWAY && !far) for (let d0 = Math.max(cA, 10) + 6; d0 < E.len - Math.max(cB, 10) - 4; d0 += 24) { // C: стрелки одностороннего движения a→b
+          const t = d0 / E.len, x = A.x + (B.x - A.x) * t, z = A.z + (B.z - A.z) * t; const y = Y(x, z, d0) + ROAD_SPEC.y.asphalt + 0.04; const b5 = pos.length / 3;
+          pos.push(x + dx * 2.2, y, z + dz * 2.2, x - dz * 1.1, y, z + dx * 1.1, x + dz * 1.1, y, z - dx * 1.1); for (let q = 0; q < 3; q++) col.push(0.92, 0.91, 0.88); idx.push(b5, b5 + 1, b5 + 2, b5, b5 + 2, b5 + 1); }
       }
       // center dashes for avenues/highways
       if (E.type === 2 && !far) { // V9: осевая только у шоссе; у проспекта — разделитель, у улиц нет
@@ -374,7 +403,7 @@ export class Renderer {
         continue;
       }
       const kd = w.kind[k]; const st = w.style[k];
-      if (detail === 0 && (kd === K.RES || kd === K.COM || kd === K.IND)) { // V8 блочный LOD: дальний квартал = масса одного цвета по району, высота сглажена
+      if (detail === 0 && (kd === K.RES || kd === K.COM || kd === K.IND) && !BALANCE.render.farLots) { // V8 блочный LOD: дальний квартал = масса одного цвета по району, высота сглажена
         const sm = smoothL(i, j, kd); const hgt = kd === K.IND ? 7 : Math.min(60, 2.5 + sm * 2.6); const dz = hash2(Math.floor(i / 4), Math.floor(j / 4), 5);
         const col = distCol(kd, i, j, sm); void dz;
         farSet(i, j, w.hAt(x, z) - 0.3, sm <= 2 && kd === K.RES ? 3.5 : hgt, col); continue; // V9: тайлы смыкаются в сплошную массу района
@@ -443,7 +472,7 @@ export class Renderer {
       else if (kd === K.PORT) { boxes.push([x, y, z, 16, 2, 16, 0, 0x6a6a6a]); boxes.push([x - 3, y + 2, z, 3, 22, 3, 0, 0xd9a03c]); boxes.push([x + 2, y + 22, z, 16, 2, 2, 0, 0xd9a03c]); boxes.push([x + 4, y + 2, z + 4, 6, 5, 6, 0, 0x2f7fbf]); boxes.push([x + 4, y + 2, z - 4, 6, 5, 6, 0, 0xbf3f2f]); }
     }
     // ── участки вдоль улиц: настоящие лоты разной ширины/глубины, фасадом к улице
-    if (detail >= 1) {
+    if (detail >= 1 || BALANCE.render.farLots) { // A9: и вдали — простые коробки по участкам, повернутые фасадом к улице (не по сетке карты)
       const x0 = cx * CHUNK * TILE, z0 = cz * CHUNK * TILE, cs = CHUNK * TILE;
       const seen = new Set<number>();
       for (const e of w.net.edgesNear(x0 + cs / 2, z0 + cs / 2, cs * 0.75 + 120)) {
@@ -463,7 +492,7 @@ export class Renderer {
           const cB = (arr: number[], key: number) => pick(arr, (dist(key) * 0.6 + hv2 * 0.4));
           const W = L.w, D = L.d;
           const cc = w.cities[w.cityOf[k] - 1] || w.cities[0]; const dn = cc ? Math.min(1, Math.hypot(L.x - cc.x, L.z - cc.z) / (cc.r * 0.45)) : 1; const grad = 1.35 - 0.75 * dn * dn; // пик в центре, спад к краю
-          if (detail < 1 && Lv < 3) continue;
+          if (detail < 1) { const hgt = L.cls === 'ind' ? 6 + Lv : L.cls === 'house' || L.cls === 'slum' ? 3.4 : Math.min(60, Lv * 3 + 1); boxes.push([L.x, y, L.z, W * 0.9, hgt, D * 0.9, rot, distCol(kd, i, j, smoothL(i, j, kd))]); continue; }
           if (this.themesOn && L.cls !== 'slum' && L.cls !== 'ind') { // этап H: темы Дезигнера по участку
             const th = lotTheme(w, L.x, L.z, L.cls); const dens = Math.max(0, Math.min(1, L.cls === 'house' ? hv : L.cls === 'tower' || L.cls === 'office' ? (Lv * grad - 4) / 26 : (Lv - 1) / 8));
             const r = themedForLot(th, L.cls, W, D, dens, L.cls === 'panel' && dist(11) > 0.4);
@@ -546,6 +575,7 @@ export class Renderer {
   }
   refreshAll() { for (const ch of this.chunks.values()) { this.world.dirtyTerrain.add(ch.id); this.world.dirtyRoads.add(ch.id); } this.buildOverview(); }
   refreshRoads() { for (const ch of this.chunks.values()) this.world.dirtyRoads.add(ch.id); }
+  farEdges = -1; farBase = groundUniforms.uFar.value.clone(); farTint0 = groundUniforms.uFarTint.value;
   updateChunks() {
     const w = this.world; const cs = CHUNK * TILE; const tx = this.ctl.tx, tz = this.ctl.tz;
     const vd = Math.min(this.q.viewDist, Math.max(3000, this.ctl.dist * 3)); // этап A: дальше видно участки
@@ -555,15 +585,16 @@ export class Renderer {
       if (a < 0 || b < 0 || a >= w.chunksN || b >= w.chunksN) continue; const d = Math.hypot((a + 0.5) * cs - tx, (b + 0.5) * cs - tz); if (d > vd + cs) continue; want.set(b * w.chunksN + a, d);
     }
     for (const [id, ch] of this.chunks) if (!want.has(id)) { this.disposeChunk(ch); this.chunks.delete(id); }
+    if (w.dirtyRoads.size && w.net.edges.length !== this.farEdges) { this.farEdges = w.net.edges.length; this.buildFarRoads(); }
     const order = [...want.entries()].sort((p, q) => p[1] - q[1]);
-    let budget = 6; const t0 = performance.now(); let pend = 0;
+    let budget = BALANCE.render.chunkOpsPerFrame; const t0 = performance.now(); let pend = 0; // QA2 п.2: бюджет кадра — не больше N операций и T мс; остальное в следующих кадрах (даль закрывает подложка)
     for (const [id, d] of order) {
       let ch = this.chunks.get(id); if (!ch) { ch = { id, tStep: 0, blds: [], bDetail: -1 }; this.chunks.set(id, ch); }
       // V10: LOD застройки/дорог считаем от КАМЕРЫ (3D), а не от точки прицела — иначе с высоты пригороды оставались в detail 1
       const cp = this.cam.position; const dc = Math.hypot((id % w.chunksN + 0.5) * cs - cp.x, cp.y, (Math.floor(id / w.chunksN) + 0.5) * cs - cp.z);
       const rs = dc < 1700 ? 1 : 2; const step = dc < 1500 ? 1 : dc < 3500 ? 2 : 4; // V11: шаг рельефа тоже от камеры
       const det = d > this.q.bldDist ? -1 : dc < 1100 ? 2 : dc < 1900 ? 1 : 0;
-      if (performance.now() - t0 > 12 && budget < 6) { if (ch.tStep !== step || ch.rStep !== rs || ch.bDetail !== det || !ch.roads) pend++; continue; }
+      if (performance.now() - t0 > BALANCE.render.chunkMsPerFrame && budget < BALANCE.render.chunkOpsPerFrame || budget <= 0) { if (ch.tStep !== step || ch.rStep !== rs || ch.bDetail !== det || !ch.roads) pend++; continue; }
       if ((ch.tStep !== step || w.dirtyTerrain.has(id)) && budget > 0) { this.buildTerrain(ch, step); w.dirtyTerrain.delete(id); budget--; }
       if ((!ch.roads || w.dirtyRoads.has(id) || ch.rStep !== rs) && budget > 0) { ch.rStep = rs; this.buildRoads(ch); w.dirtyRoads.delete(id); budget--; }
       if ((ch.bDetail !== det || w.dirtyBld.has(id) || ch.tStep !== step || ch.rStep !== rs) && budget <= 0) pend++;
@@ -582,7 +613,26 @@ export class Renderer {
     this.rig.sky.position.copy(this.cam.position); ((this.rig.sky.material as THREE.ShaderMaterial).uniforms.uSunDir.value as THREE.Vector3).set(Math.cos(a), Math.max(0.05, sy), 0.35).normalize();
     const sc = Math.min(1200, Math.max(150, this.ctl.dist * 0.8)); this.renderer.shadowMap.enabled = this.q.shadows && this.ctl.dist < 2200; /* тени только вблизи */ const cam = this.sun.shadow.camera;
     cam.left = -sc; cam.right = sc; cam.top = sc; cam.bottom = -sc; cam.near = 10; cam.far = R * 2.5; cam.updateProjectionMatrix();
-    (this.scene.fog as THREE.Fog).near = Math.max(900, this.ctl.dist * 1.2); groundUniforms.uTime.value = performance.now() / 1000; groundUniforms.uFogCol.value.copy((this.scene.fog as THREE.Fog).color); (this.scene.fog as THREE.Fog).far = Math.max(this.q.viewDist * 1.6, this.ctl.dist * 4);
+    (this.scene.fog as THREE.Fog).near = Math.max(1500, this.ctl.dist * 2); /* QA2 п.9: даль без серой пелены */ { const U = groundUniforms.uFar.value; U.x = Math.max(this.farBase.x, this.ctl.dist * 1.6); U.y = Math.max(this.farBase.y, U.x * 3); U.z = this.farBase.z * 0.5; groundUniforms.uFarTint.value = this.farTint0 * 0.4; } groundUniforms.uTime.value = performance.now() / 1000; groundUniforms.uFogCol.value.copy((this.scene.fog as THREE.Fog).color); (this.scene.fog as THREE.Fog).far = Math.max(this.q.viewDist * 1.6, this.ctl.dist * 4);
   }
-  render() { this.rail?.frame(1 / 60); const cn = Math.min(40, Math.max(1, this.ctl.dist * 0.01)); if (Math.abs(this.cam.near - cn) > 0.2 * cn) { this.cam.near = cn; this.cam.far = Math.max(this.world.M * 3, this.q.viewDist * 2); this.cam.updateProjectionMatrix(); } /* этап A: ближняя плоскость от дистанции — точность глубины, нет мигания (z-fighting) на краю карты */ const lo = this.ctl.dist < 1800; this.vehMeshes[0].visible = this.vehMeshes[1].visible = lo; /* V11: легковые/грузовики с высоты — субпиксельные, не рисуем */ this.renderer.render(this.scene, this.cam); this.stats.tris = this.renderer.info.render.triangles; this.stats.calls = this.renderer.info.render.calls; }
+  /** C2 (USER_FEEDBACK_2, NIGHT_SPEC §8): слой загрузки — тёмная сцена + неоновая лента по дорогам, цвет по загрузке (design/night createTrafficNeonMaterial) */
+  neon: THREE.Mesh | null = null; neonT = 0; neonMat: THREE.ShaderMaterial | null = null; dimSaved: number[] | null = null;
+  neonFrame() {
+    const on = this.overlay === 'traffic'; const now = performance.now();
+    if (on && !this.dimSaved) { this.dimSaved = [this.hemi.intensity, this.sun.intensity]; this.hemi.intensity *= 0.35; this.sun.intensity *= 0.25; }
+    if (!on && this.dimSaved) { this.hemi.intensity = this.dimSaved[0]; this.sun.intensity = this.dimSaved[1]; this.dimSaved = null; }
+    if (!on) { if (this.neon) this.neon.visible = false; return; }
+    nightUniforms.uTime.value = now / 1000;
+    if (this.neon && now - this.neonT < 1000) { this.neon.visible = true; return; } this.neonT = now;
+    const w = this.world, net = w.net; const R = Math.max(1500, this.ctl.dist * 2.5); const pos: number[] = [], uv: number[] = [], ld: number[] = [], idx: number[] = [];
+    for (const e of net.edgesNear(this.ctl.tx, this.ctl.tz, R)) { const E = net.edges[e]; if (!E.alive || (E.lv || 0) < 0) continue; const A = net.nodes[E.a], B = net.nodes[E.b];
+      const hw = ROAD_TYPES[E.type].w * 0.42; const dx = (B.x - A.x) / E.len, dz = (B.z - A.z) / E.len; const l = clamp(this.edgeLoad(e) / 1.1, 0, 1); const st = Math.max(1, Math.ceil(E.len / 24));
+      const b0 = pos.length / 3; for (let s2 = 0; s2 <= st; s2++) { const t = s2 / st, x = A.x + (B.x - A.x) * t, z = A.z + (B.z - A.z) * t; const y = w.roadY(x, z) + w.edgeOff(e, E.len * t) + 0.35;
+        pos.push(x - dz * hw, y, z + dx * hw, x + dz * hw, y, z - dx * hw); uv.push(E.len * t, 0, E.len * t, 1); ld.push(l, l); }
+      for (let s2 = 0; s2 < st; s2++) { const p = b0 + s2 * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('load', new THREE.Float32BufferAttribute(ld, 1)); g.setIndex(idx);
+    if (!this.neon) { this.neonMat = createTrafficNeonMaterial(); this.neon = new THREE.Mesh(g, this.neonMat); this.neon.frustumCulled = false; this.neon.renderOrder = 20; this.scene.add(this.neon); } else { this.neon.geometry.dispose(); this.neon.geometry = g; }
+    this.neon.visible = true;
+  }
+  render() { this.neonFrame(); this.rail?.frame(1 / 60); const cn = Math.min(40, Math.max(1, this.ctl.dist * 0.01)); if (Math.abs(this.cam.near - cn) > 0.2 * cn) { this.cam.near = cn; this.cam.far = Math.max(this.world.M * 3, this.q.viewDist * 2); this.cam.updateProjectionMatrix(); } /* этап A: ближняя плоскость от дистанции — точность глубины, нет мигания (z-fighting) на краю карты */ const lo = this.ctl.dist < 1800; this.vehMeshes[0].visible = this.vehMeshes[1].visible = lo; /* V11: легковые/грузовики с высоты — субпиксельные, не рисуем */ this.renderer.render(this.scene, this.cam); this.stats.tris = this.renderer.info.render.triangles; this.stats.calls = this.renderer.info.render.calls; }
 }

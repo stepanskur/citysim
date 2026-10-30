@@ -1,698 +1,990 @@
 {
-  "BRAND": {
-    "sugar": "#fff8ee",
-    "teal": "#1fa39a",
-    "coral": "#ff7a59",
-    "saffron": "#ffc145",
-    "ink": "#2b2f45",
-    "lavender": "#8f86b8"
+ "BRAND": {
+  "sugar": 16775406,
+  "teal": 2073498,
+  "coral": 16743001,
+  "saffron": 16761157,
+  "ink": 2830149,
+  "lavender": 9406136
+ },
+ "WORLD": {
+  "day": {
+   "zenith": 8370933,
+   "horizon": 16769736,
+   "fog": 15981771,
+   "sun": 16772300,
+   "sunI": 3.1,
+   "hemiSky": 12901631,
+   "hemiGround": 9076656,
+   "hemiI": 0.85,
+   "exposure": 1,
+   "shadowTint": 7301792
   },
-  "WORLD": {
-    "day": {
-      "zenith": "#7fbaf5",
-      "horizon": "#ffe2c8",
-      "fog": "#f3dccb",
-      "sun": "#ffeccc",
-      "sunI": 3.1,
-      "hemiSky": "#c4dcff",
-      "hemiGround": "#8a7fb0",
-      "hemiI": 0.85,
-      "exposure": 1,
-      "shadowTint": "#6f6aa0"
-    },
-    "dawn": {
-      "zenith": "#9fb2e6",
-      "horizon": "#ffcfb8",
-      "fog": "#f0c9c0",
-      "sun": "#ffb98a",
-      "sunI": 1.7,
-      "hemiSky": "#d8d4f2",
-      "hemiGround": "#8a7aa0",
-      "hemiI": 1,
-      "exposure": 1.02,
-      "shadowTint": "#6a5a98"
-    },
-    "dusk": {
-      "zenith": "#5f6fb8",
-      "horizon": "#ff9f70",
-      "fog": "#f0a888",
-      "sun": "#ff8a4c",
-      "sunI": 1.9,
-      "hemiSky": "#ffb8a0",
-      "hemiGround": "#5a4a78",
-      "hemiI": 0.9,
-      "exposure": 1.08,
-      "shadowTint": "#4a3a80"
-    },
-    "night": {
-      "zenith": "#0b1030",
-      "horizon": "#2a2f68",
-      "fog": "#1c2250",
-      "sun": "#9fb0ff",
-      "sunI": 0.35,
-      "hemiSky": "#3c4a90",
-      "hemiGround": "#1a1430",
-      "hemiI": 0.6,
-      "exposure": 1.2,
-      "shadowTint": "#101040"
-    }
+  "dawn": {
+   "zenith": 10466022,
+   "horizon": 16764856,
+   "fog": 15780288,
+   "sun": 16759178,
+   "sunI": 1.7,
+   "hemiSky": 14210290,
+   "hemiGround": 9075360,
+   "hemiI": 1,
+   "exposure": 1.02,
+   "shadowTint": 6970008
   },
-  "TERRAIN": {
-    "grass": "#8fbd5e",
-    "grassDry": "#c8c47a",
-    "meadow": "#b2d27a",
-    "forestFloor": "#6f9a55",
-    "sand": "#f2deae",
-    "rock": "#a89f98",
-    "snow": "#f6f4fa",
-    "waterShallow": "#7fd6d0",
-    "waterDeep": "#3a7fc0",
-    "waterFoam": "#f4fbff",
-    "field1": "#e6cd78",
-    "field2": "#b0c860",
-    "field3": "#d8a86a"
+  "dusk": {
+   "zenith": 6254520,
+   "horizon": 16752496,
+   "fog": 15771784,
+   "sun": 16747084,
+   "sunI": 1.9,
+   "hemiSky": 16758944,
+   "hemiGround": 5917304,
+   "hemiI": 0.9,
+   "exposure": 1.08,
+   "shadowTint": 4864640
   },
-  "SEASONS": {
-    "summer": {
-      "grass": "#9cc76a",
-      "leaf": [
-        "#6fb25a",
-        "#8cc461",
-        "#5aa36a",
-        "#a6cf5e"
-      ],
-      "needle": "#3a7a62"
-    },
-    "autumn": {
-      "grass": "#c2b46c",
-      "leaf": [
-        "#f0a23c",
-        "#e5703a",
-        "#f2c94c",
-        "#c95a4a"
-      ],
-      "needle": "#3e705c"
-    },
-    "winter": {
-      "grass": "#f2f1f8",
-      "leaf": [
-        "#b8a89a",
-        "#a89888",
-        "#c8b8a8",
-        "#9a8a80"
-      ],
-      "needle": "#335f55"
-    },
-    "spring": {
-      "grass": "#a8d870",
-      "leaf": [
-        "#ffc4d6",
-        "#a6dc78",
-        "#f7d6e6",
-        "#8ccf6a"
-      ],
-      "needle": "#3e8064"
-    }
-  },
-  "ROADS": {
-    "asphalt": "#5e6273",
-    "asphaltOld": "#737687",
-    "highway": "#50546a",
-    "dirt": "#c2a57a",
-    "marking": "#fff8ee",
-    "markingYellow": "#ffc145",
-    "curb": "#e6ddd0",
-    "sidewalk": "#d6ccc0",
-    "rail": "#7a6658",
-    "ballast": "#a69a8e",
-    "tramTrack": "#8a8a98"
-  },
-  "BUILD": {
-    "resWalls": [
-      "#ffe9d2",
-      "#ffd7b8",
-      "#f6e6c8",
-      "#e8f0d8",
-      "#ffdcd6",
-      "#dfeaf2",
-      "#f2e2f0",
-      "#fff1c9"
-    ],
-    "resRoofs": [
-      "#d2654a",
-      "#b5503f",
-      "#1fa39a",
-      "#5b6f8f",
-      "#8a5a6a",
-      "#e08a4a"
-    ],
-    "midWalls": [
-      "#f5dcc0",
-      "#e9e0cf",
-      "#d6e4e6",
-      "#f6cfb6",
-      "#e2d6ea",
-      "#cfe0cf"
-    ],
-    "towerWalls": [
-      "#f2ede6",
-      "#dde6ee",
-      "#e9e0f0",
-      "#d8ebe6",
-      "#f4e2d6"
-    ],
-    "glass": "#8dc3e8",
-    "glassDark": "#2b2f45",
-    "windowWarm": "#ffc878",
-    "windowDay": "#6f8fc0",
-    "comWalls": [
-      "#fff8ee",
-      "#f6ead8",
-      "#e0ecf4",
-      "#ffe6d0"
-    ],
-    "comAccent": [
-      "#ff7a59",
-      "#1fa39a",
-      "#ffc145",
-      "#7a6fd8",
-      "#e84e7a"
-    ],
-    "indWalls": [
-      "#d2cdc6",
-      "#c6c2be",
-      "#d8ccbc",
-      "#bfc6cc"
-    ],
-    "indRoof": [
-      "#8a90a0",
-      "#7a8090",
-      "#9a8f86"
-    ],
-    "indAccent": "#ffc145",
-    "chimney": "#c76a52",
-    "civicWalls": [
-      "#fff8ee",
-      "#f6efe2"
-    ],
-    "civicRoof": "#1fa39a",
-    "civicAccent": "#ffc145",
-    "stationWalls": "#f2d6b0",
-    "stationRoof": "#1fa39a",
-    "depotWalls": "#e0cdb4",
-    "trim": "#fff8ee",
-    "door": "#8a5a4a",
-    "concrete": "#e0d8ce",
-    "rooftop": "#b8b0b8",
-    "plinth": "#b9a8a0"
-  },
-  "VEHICLES": {
-    "car": [
-      "#ff7a59",
-      "#4f8fe8",
-      "#fff8ee",
-      "#2b2f45",
-      "#ffc145",
-      "#1fa39a",
-      "#a8b0c0",
-      "#8a6fd8",
-      "#e84e7a"
-    ],
-    "glass": "#2b2f45",
-    "tire": "#262838",
-    "light": "#fff4d0",
-    "tail": "#e8404a",
-    "truckCab": [
-      "#ff7a59",
-      "#4f8fe8",
-      "#fff8ee",
-      "#ffc145",
-      "#1fa39a"
-    ],
-    "truckCargo": [
-      "#f2ede6",
-      "#c8d0dc",
-      "#8aa070",
-      "#e6a060"
-    ],
-    "bus": "#ff7a59",
-    "busStripe": "#fff8ee",
-    "tram": "#1fa39a",
-    "tramStripe": "#fff8ee",
-    "loco": "#2f4f8a",
-    "locoStripe": "#ffc145",
-    "wagonPass": "#2f7f7a",
-    "wagonFreight": [
-      "#a8564a",
-      "#5f7088",
-      "#7a7a5f"
-    ]
-  },
-  "TREES": {
-    "trunk": "#8a6248",
-    "trunkBirch": "#f6f2ea",
-    "needle": "#3a7a62",
-    "needle2": "#4a8a6a",
-    "leaf": [
-      "#6fb25a",
-      "#8cc461",
-      "#5aa36a",
-      "#a6cf5e"
-    ]
-  },
-  "HEATMAPS": {
-    "landValue": [
-      "#2e1f5e",
-      "#5b4bb0",
-      "#2fa3b5",
-      "#9fe08a",
-      "#fff07a"
-    ],
-    "traffic": [
-      "#3fc28a",
-      "#b6e05a",
-      "#ffd24a",
-      "#ff8a4c",
-      "#e8404a"
-    ],
-    "pollution": [
-      "#faf6ea",
-      "#e6d79a",
-      "#c0a060",
-      "#8a6a50",
-      "#4a3a3a"
-    ],
-    "noise": [
-      "#f2f6ff",
-      "#c2d4f5",
-      "#8aa6ea",
-      "#5a6fd0",
-      "#2e2f8a"
-    ],
-    "happiness": [
-      "#e8404a",
-      "#ff8a4c",
-      "#fff0c8",
-      "#9fe08a",
-      "#2fb57a"
-    ],
-    "coverage": [
-      "#2b2f45",
-      "#2f5f9a",
-      "#3fa8e0",
-      "#8ee0f5",
-      "#f0fcff"
-    ],
-    "demandRCI": {
-      "R": "#3fc28a",
-      "C": "#4f8fe8",
-      "I": "#ffc145"
-    }
-  },
-  "UI": {
-    "color": {
-      "bg0": "#0d1020",
-      "bg1": "rgba(22,25,44,0.72)",
-      "bg2": "rgba(36,40,66,0.78)",
-      "bg3": "#33385c",
-      "stroke": "rgba(255,255,255,0.09)",
-      "strokeStrong": "rgba(255,255,255,0.18)",
-      "highlight": "rgba(255,255,255,0.14)",
-      "text": "#f6f3ff",
-      "textDim": "#b8b6d4",
-      "textMute": "#7c7ca0",
-      "accent": "#5fe0c8",
-      "accentHover": "#86ecd8",
-      "accentPress": "#36c4ab",
-      "accentInk": "#06201c",
-      "money": "#ffd36a",
-      "positive": "#5fe09a",
-      "negative": "#ff7a6a",
-      "warning": "#ffc145",
-      "info": "#8ab8ff",
-      "res": "#5fe09a",
-      "com": "#7aaaff",
-      "ind": "#ffc145",
-      "transit": "#c49aff",
-      "bus": "#ff7a59",
-      "tram": "#1fc7b8",
-      "rail": "#7aaaff",
-      "truck": "#b8b6d4"
-    },
-    "radius": {
-      "xs": 6,
-      "sm": 8,
-      "md": 12,
-      "lg": 18,
-      "xl": 24,
-      "pill": "#0003e7"
-    },
-    "space": {
-      "1": 4,
-      "2": 8,
-      "3": 12,
-      "4": 16,
-      "5": 20,
-      "6": 24,
-      "8": 32,
-      "10": 40
-    },
-    "shadow": {
-      "panel": "0 1px 0 rgba(255,255,255,0.10) inset, 0 20px 50px -12px rgba(8,6,30,0.55), 0 2px 6px rgba(8,6,30,0.25)",
-      "pop": "0 24px 60px -10px rgba(8,6,30,0.65)",
-      "glow": "0 0 0 3px rgba(95,224,200,0.30)"
-    },
-    "font": {
-      "family": "'Inter', 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-      "display": "'Manrope', 'Inter', system-ui, sans-serif",
-      "mono": "'JetBrains Mono', 'Roboto Mono', ui-monospace, monospace",
-      "size": {
-        "xs": 11,
-        "sm": 12,
-        "md": 13,
-        "lg": 15,
-        "xl": 20,
-        "xxl": 28,
-        "hero": 64
-      },
-      "weight": {
-        "regular": "#000190",
-        "medium": "#0001f4",
-        "semibold": "#000258",
-        "bold": "#0002bc",
-        "black": "#000320"
-      }
-    },
-    "blur": 22,
-    "motion": {
-      "fast": "120ms",
-      "base": "200ms",
-      "slow": "360ms",
-      "ease": "cubic-bezier(.2,.8,.2,1)",
-      "spring": "cubic-bezier(.34,1.56,.64,1)"
-    },
-    "z": {
-      "hud": 10,
-      "panel": 20,
-      "toolbar": 30,
-      "tooltip": 50,
-      "toast": 60,
-      "modal": 80
-    }
-  },
-  "GROUND": {
-    "grass": "#8fbd5e",
-    "grassDry": "#a9c46a",
-    "meadow": "#9cc76a",
-    "forest": "#5f9a52",
-    "forestFloor": "#6e8f4e",
-    "field": "#d8cf8a",
-    "fieldPlowed": "#b89a6e",
-    "sand": "#e8d9a8",
-    "sandWet": "#c9b98c",
-    "rock": "#9a9088",
-    "snow": "#f4f3f8",
-    "yard": "#c9c2b4",
-    "yardGrass": "#a6c47a",
-    "shoreSand": "#d9cba0",
-    "foam": "#fdfaf2",
-    "water": "#5fb3c9",
-    "waterDeep": "#3c86a8",
-    "detail": {
-      "amp": 0.07,
-      "scaleFine": 0.45,
-      "scaleCoarse": 0.045,
-      "ampCoarse": 0.06,
-      "fadeNear": 250,
-      "fadeFar": "#000578"
-    },
-    "shore": {
-      "wetTop": 0.9,
-      "foamLo": -0.05,
-      "foamHi": 0.35,
-      "foamSpeed": 0.6
-    },
-    "blurPasses": [
-      2,
-      1,
-      1
-    ],
-    "far": {
-      "start": "#000384",
-      "end": "#001194",
-      "desat": 0.55,
-      "maxLuma": 0.82,
-      "tintToFog": 0.35
-    }
-  },
-  "ROAD_SPEC": {
-    "asphalt": [
-      7,
-      12,
-      14,
-      4.5
-    ],
-    "median": [
-      0,
-      2,
-      3,
-      0
-    ],
-    "sidewalk": [
-      2.5,
-      3.5,
-      0,
-      1.5
-    ],
-    "shoulder": [
-      0,
-      0,
-      1,
-      0
-    ],
-    "curbW": 0.3,
-    "curbH": 0.15,
-    "cornerR": [
-      5,
-      8,
-      12,
-      3
-    ],
-    "color": {
-      "asphalt": [
-        "#5e6273",
-        "#575b6c",
-        "#50546a",
-        "#6c6f7e"
-      ],
-      "pad": "#5a5e70",
-      "curb": "#ece4d8",
-      "sidewalk": "#d6ccc0",
-      "median": "#8fbd5e",
-      "shoulder": "#8a8d98"
-    },
-    "marking": {
-      "color": "#fff8ee",
-      "yellow": "#ffc145",
-      "alpha": 0.92,
-      "centerW": 0.15,
-      "dash": 3,
-      "gap": 6,
-      "doubleGap": 0.15,
-      "edgeW": 0.15,
-      "edgeInset": 0.4,
-      "zebraW": 0.5,
-      "zebraGap": 0.5,
-      "zebraDepth": 3,
-      "zebraFromPad": 0.5,
-      "stopW": 0.4,
-      "stopFromZebra": 1,
-      "zebraOn": [
-        true,
-        true,
-        false,
-        false
-      ],
-      "centerline": [
-        "dash",
-        "double",
-        "dash",
-        "none"
-      ]
-    },
-    "rail": {
-      "gauge": 1.52,
-      "railW": 0.08,
-      "ballastW": 3.2,
-      "ballastH": 0.25,
-      "sleeperL": 2.6,
-      "sleeperW": 0.22,
-      "sleeperStep": 0.6
-    },
-    "y": {
-      "sidewalk": 0.06,
-      "asphalt": 0.1,
-      "pad": 0.11,
-      "marking": 0.13,
-      "rail": 0.1
-    },
-    "polygonOffset": {
-      "terrain": [
-        1,
-        1
-      ],
-      "sidewalk": [
-        -1,
-        -2
-      ],
-      "asphalt": [
-        -2,
-        -4
-      ],
-      "marking": [
-        -3,
-        -8
-      ]
-    },
-    "renderOrder": {
-      "terrain": 0,
-      "water": 1,
-      "sidewalk": 2,
-      "asphalt": 3,
-      "marking": 4,
-      "props": 5
-    }
-  },
-  "SIGNAL": {
-    "red": "#ff3b2f",
-    "yellow": "#ffc145",
-    "green": "#35e07a",
-    "off": "#262a33",
-    "housing": "#2b2f45",
-    "pole": "#4a4f57",
-    "visor": "#1c1f2a",
-    "backplate": "#fff8ee",
-    "poleH": 3,
-    "poleR": 0.07,
-    "headW": 0.34,
-    "headH": 0.95,
-    "headD": 0.26,
-    "lampR": 0.1,
-    "lampStep": 0.3,
-    "back": 1.5,
-    "side": 0.6,
-    "lodDist": "#0001a4",
-    "lodFadeFrom": "#000154",
-    "maxPerFrame": "#0004b0",
-    "phase": {
-      "green": 18,
-      "yellow": 3,
-      "allRed": 1
-    }
-  },
-  "THEMES": {
-    "base": {
-      "label": "Базовая «Пастила»"
-    },
-    "lateSng": {
-      "label": "Позднее СНГ",
-      "panels": [
-        "#e9dcc4",
-        "#c9d3dc",
-        "#e8cf8e",
-        "#d9d5cc",
-        "#f0e6d6",
-        "#bfd0d8"
-      ],
-      "seams": [
-        "#d25b4a",
-        "#3f7fbf",
-        "#4f9a6a",
-        "#e0a030",
-        "#8f86b8",
-        "#c8c2b6"
-      ],
-      "roof": "#55586a",
-      "parapet": "#b8b2a8",
-      "plinth": "#8a8580",
-      "glass": "#7e9ab8",
-      "frame": "#f4f1ea",
-      "loggiaGlaze": [
-        "#bfd8e4",
-        "#d6e6d0",
-        "#e8e0c8",
-        "#f4f1ea"
-      ],
-      "door": "#6a5040",
-      "canopy": "#cfc8bc",
-      "shopGlass": "#6fa8c8",
-      "sign": [
-        "#d8402f",
-        "#1f7fbf",
-        "#2f9a5a"
-      ]
-    },
-    "russianClassic": {
-      "label": "Российская классика",
-      "walls": [
-        "#e8b85a",
-        "#c8684a",
-        "#f2e2a0",
-        "#d8e8cc",
-        "#ecc8a2",
-        "#b5503f",
-        "#f0d2b0"
-      ],
-      "trim": "#fff8ee",
-      "roofs": [
-        "#5f8f6a",
-        "#8a929c",
-        "#4f7a5a",
-        "#a04a3a",
-        "#7a8590"
-      ],
-      "plinth": "#a89a8a",
-      "glass": "#5f7a96",
-      "door": "#5a3a2e",
-      "gate": "#2b2f45",
-      "dome": "#5f8f6a"
-    },
-    "french": {
-      "label": "Париж (Осман)",
-      "stone": [
-        "#f1e6cf",
-        "#eadcc0",
-        "#f5ecda",
-        "#e6d6b8"
-      ],
-      "zinc": "#7f8a96",
-      "zincDark": "#5f6a76",
-      "iron": "#2b2f45",
-      "awnings": [
-        "#b5303a",
-        "#1f5f4a",
-        "#2b3f6a",
-        "#e6c14a",
-        "#8a2f4a"
-      ],
-      "chimney": "#c98a6a",
-      "pot": "#b5603f",
-      "glass": "#6d8aa8",
-      "shop": [
-        "#1f3f4a",
-        "#5a2a2a",
-        "#2b2f45",
-        "#3f5a3a"
-      ]
-    },
-    "details": {
-      "downpipe": "#8a929c",
-      "ac": "#eef0f2",
-      "acGrille": "#9aa2ae",
-      "vent": "#b8b0b8",
-      "antenna": "#6a7080",
-      "dish": "#f4f4f0",
-      "fireEscape": "#3a3f5a"
-    }
+  "night": {
+   "zenith": 725040,
+   "horizon": 2764648,
+   "fog": 1843792,
+   "sun": 10465535,
+   "sunI": 0.35,
+   "hemiSky": 3951248,
+   "hemiGround": 1709104,
+   "hemiI": 0.6,
+   "exposure": 1.2,
+   "shadowTint": 1052736
   }
+ },
+ "TERRAIN": {
+  "grass": 9420126,
+  "grassDry": 13157498,
+  "meadow": 11719290,
+  "forestFloor": 7314005,
+  "sand": 15916718,
+  "rock": 11050904,
+  "snow": 16184570,
+  "waterShallow": 8378064,
+  "waterDeep": 3833792,
+  "waterFoam": 16055295,
+  "field1": 15125880,
+  "field2": 11585632,
+  "field3": 14198890
+ },
+ "SEASONS": {
+  "summer": {
+   "grass": 10274666,
+   "leaf": [
+    7320154,
+    9225313,
+    5940074,
+    10932062
+   ],
+   "needle": 3832418
+  },
+  "autumn": {
+   "grass": 12760172,
+   "leaf": [
+    15770172,
+    15036474,
+    15911244,
+    13195850
+   ],
+   "needle": 4091996
+  },
+  "winter": {
+   "grass": 15921656,
+   "leaf": [
+    12101786,
+    11049096,
+    13154472,
+    10128000
+   ],
+   "needle": 3366741
+  },
+  "spring": {
+   "grass": 11065456,
+   "leaf": [
+    16762070,
+    10935416,
+    16242406,
+    9228138
+   ],
+   "needle": 4096100
+  }
+ },
+ "ROADS": {
+  "asphalt": 6185587,
+  "asphaltOld": 7566983,
+  "highway": 5264490,
+  "dirt": 12756346,
+  "marking": 16775406,
+  "markingYellow": 16761157,
+  "curb": 15130064,
+  "sidewalk": 14077120,
+  "rail": 8021592,
+  "ballast": 10918542,
+  "tramTrack": 9079448
+ },
+ "BUILD": {
+  "resWalls": [
+   16771538,
+   16766904,
+   16180936,
+   15266008,
+   16768214,
+   14674674,
+   15917808,
+   16773577
+  ],
+  "resRoofs": [
+   13788490,
+   11882559,
+   2073498,
+   5992335,
+   9067114,
+   14715466
+  ],
+  "midWalls": [
+   16112832,
+   15327439,
+   14083302,
+   16175030,
+   14866154,
+   13623503
+  ],
+  "towerWalls": [
+   15920614,
+   14542574,
+   15327472,
+   14216166,
+   16048854
+  ],
+  "glass": 9290728,
+  "glassDark": 2830149,
+  "windowWarm": 16763000,
+  "windowDay": 7311296,
+  "comWalls": [
+   16775406,
+   16181976,
+   14740724,
+   16770768
+  ],
+  "comAccent": [
+   16743001,
+   2073498,
+   16761157,
+   8024024,
+   15224442
+  ],
+  "indWalls": [
+   13815238,
+   13025982,
+   14208188,
+   12568268
+  ],
+  "indRoof": [
+   9080992,
+   8028304,
+   10129286
+  ],
+  "indAccent": 16761157,
+  "chimney": 13068882,
+  "civicWalls": [
+   16775406,
+   16183266
+  ],
+  "civicRoof": 2073498,
+  "civicAccent": 16761157,
+  "stationWalls": 15914672,
+  "stationRoof": 2073498,
+  "depotWalls": 14732724,
+  "trim": 16775406,
+  "door": 9067082,
+  "concrete": 14735566,
+  "rooftop": 12103864,
+  "plinth": 12167328
+ },
+ "VEHICLES": {
+  "car": [
+   16743001,
+   5214184,
+   16775406,
+   2830149,
+   16761157,
+   2073498,
+   11055296,
+   9072600,
+   15224442
+  ],
+  "glass": 2830149,
+  "tire": 2500664,
+  "light": 16774352,
+  "tail": 15220810,
+  "truckCab": [
+   16743001,
+   5214184,
+   16775406,
+   16761157,
+   2073498
+  ],
+  "truckCargo": [
+   15920614,
+   13160668,
+   9085040,
+   15114336
+  ],
+  "bus": 16743001,
+  "busStripe": 16775406,
+  "tram": 2073498,
+  "tramStripe": 16775406,
+  "loco": 3100554,
+  "locoStripe": 16761157,
+  "wagonPass": 3112826,
+  "wagonFreight": [
+   11032138,
+   6254728,
+   8026719
+  ]
+ },
+ "TREES": {
+  "trunk": 9069128,
+  "trunkBirch": 16184042,
+  "needle": 3832418,
+  "needle2": 4885098,
+  "leaf": [
+   7320154,
+   9225313,
+   5940074,
+   10932062
+  ]
+ },
+ "HEATMAPS": {
+  "landValue": [
+   3022686,
+   5983152,
+   3122101,
+   10477706,
+   16773242
+  ],
+  "traffic": [
+   4178570,
+   11984986,
+   16765514,
+   16747084,
+   15220810
+  ],
+  "pollution": [
+   16447210,
+   15128474,
+   12623968,
+   9071184,
+   4864570
+  ],
+  "noise": [
+   15922943,
+   12768501,
+   9086698,
+   5926864,
+   3026826
+  ],
+  "happiness": [
+   15220810,
+   16747084,
+   16773320,
+   10477706,
+   3126650
+  ],
+  "coverage": [
+   2830149,
+   3104666,
+   4172000,
+   9363701,
+   15793407
+  ],
+  "demandRCI": {
+   "R": 4178570,
+   "C": 5214184,
+   "I": 16761157
+  }
+ },
+ "UI": {
+  "color": {
+   "bg0": "#0d1020",
+   "bg1": "rgba(22,25,44,0.72)",
+   "bg2": "rgba(36,40,66,0.78)",
+   "bg3": "#33385c",
+   "stroke": "rgba(255,255,255,0.09)",
+   "strokeStrong": "rgba(255,255,255,0.18)",
+   "highlight": "rgba(255,255,255,0.14)",
+   "text": "#f6f3ff",
+   "textDim": "#b8b6d4",
+   "textMute": "#7c7ca0",
+   "accent": "#5fe0c8",
+   "accentHover": "#86ecd8",
+   "accentPress": "#36c4ab",
+   "accentInk": "#06201c",
+   "money": "#ffd36a",
+   "positive": "#5fe09a",
+   "negative": "#ff7a6a",
+   "warning": "#ffc145",
+   "info": "#8ab8ff",
+   "res": "#5fe09a",
+   "com": "#7aaaff",
+   "ind": "#ffc145",
+   "transit": "#c49aff",
+   "bus": "#ff7a59",
+   "tram": "#1fc7b8",
+   "rail": "#7aaaff",
+   "truck": "#b8b6d4"
+  },
+  "radius": {
+   "xs": 6,
+   "sm": 8,
+   "md": 12,
+   "lg": 18,
+   "xl": 24,
+   "pill": 999
+  },
+  "space": {
+   "1": 4,
+   "2": 8,
+   "3": 12,
+   "4": 16,
+   "5": 20,
+   "6": 24,
+   "8": 32,
+   "10": 40
+  },
+  "shadow": {
+   "panel": "0 1px 0 rgba(255,255,255,0.10) inset, 0 20px 50px -12px rgba(8,6,30,0.55), 0 2px 6px rgba(8,6,30,0.25)",
+   "pop": "0 24px 60px -10px rgba(8,6,30,0.65)",
+   "glow": "0 0 0 3px rgba(95,224,200,0.30)"
+  },
+  "font": {
+   "family": "'Inter', 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+   "display": "'Manrope', 'Inter', system-ui, sans-serif",
+   "mono": "'JetBrains Mono', 'Roboto Mono', ui-monospace, monospace",
+   "size": {
+    "xs": 11,
+    "sm": 12,
+    "md": 13,
+    "lg": 15,
+    "xl": 20,
+    "xxl": 28,
+    "hero": 64
+   },
+   "weight": {
+    "regular": 400,
+    "medium": 500,
+    "semibold": 600,
+    "bold": 700,
+    "black": 800
+   }
+  },
+  "blur": 22,
+  "motion": {
+   "fast": "120ms",
+   "base": "200ms",
+   "slow": "360ms",
+   "ease": "cubic-bezier(.2,.8,.2,1)",
+   "spring": "cubic-bezier(.34,1.56,.64,1)"
+  },
+  "z": {
+   "hud": 10,
+   "panel": 20,
+   "toolbar": 30,
+   "tooltip": 50,
+   "toast": 60,
+   "modal": 80
+  }
+ },
+ "GROUND": {
+  "grass": 9420126,
+  "grassDry": 11125866,
+  "meadow": 10274666,
+  "forest": 6265426,
+  "forestFloor": 7245646,
+  "field": 14208906,
+  "fieldPlowed": 12098158,
+  "sand": 15260072,
+  "sandWet": 13220236,
+  "rock": 10129544,
+  "snow": 16053240,
+  "yard": 13222580,
+  "yardGrass": 10929274,
+  "shoreSand": 14273440,
+  "foam": 16644850,
+  "water": 6271945,
+  "waterDeep": 3966632,
+  "detail": {
+   "amp": 0.07,
+   "scaleFine": 0.45,
+   "scaleCoarse": 0.045,
+   "ampCoarse": 0.06,
+   "fadeNear": 250,
+   "fadeFar": 1400
+  },
+  "shore": {
+   "wetTop": 0.9,
+   "foamLo": -0.05,
+   "foamHi": 0.35,
+   "foamSpeed": 0.6
+  },
+  "blurPasses": [
+   2,
+   1,
+   1
+  ],
+  "far": {
+   "start": 900,
+   "end": 4500,
+   "desat": 0.55,
+   "maxLuma": 0.82,
+   "tintToFog": 0.35
+  }
+ },
+ "ROAD_SPEC": {
+  "asphalt": [
+   7,
+   12,
+   14,
+   4.5
+  ],
+  "median": [
+   0,
+   2,
+   3,
+   0
+  ],
+  "sidewalk": [
+   2.5,
+   3.5,
+   0,
+   1.5
+  ],
+  "shoulder": [
+   0,
+   0,
+   1,
+   0
+  ],
+  "curbW": 0.3,
+  "curbH": 0.15,
+  "cornerR": [
+   5,
+   8,
+   12,
+   3
+  ],
+  "color": {
+   "asphalt": [
+    6185587,
+    5725036,
+    5264490,
+    7106430
+   ],
+   "pad": 5922416,
+   "curb": 15525080,
+   "sidewalk": 14077120,
+   "median": 9420126,
+   "shoulder": 9080216
+  },
+  "marking": {
+   "color": 16775406,
+   "yellow": 16761157,
+   "alpha": 0.92,
+   "centerW": 0.15,
+   "dash": 3,
+   "gap": 6,
+   "doubleGap": 0.15,
+   "edgeW": 0.15,
+   "edgeInset": 0.4,
+   "zebraW": 0.5,
+   "zebraGap": 0.5,
+   "zebraDepth": 3,
+   "zebraFromPad": 0.5,
+   "stopW": 0.4,
+   "stopFromZebra": 1,
+   "zebraOn": [
+    true,
+    true,
+    false,
+    false
+   ],
+   "centerline": [
+    "dash",
+    "double",
+    "dash",
+    "none"
+   ]
+  },
+  "rail": {
+   "gauge": 1.52,
+   "railW": 0.08,
+   "ballastW": 3.2,
+   "ballastH": 0.25,
+   "sleeperL": 2.6,
+   "sleeperW": 0.22,
+   "sleeperStep": 0.6
+  },
+  "y": {
+   "sidewalk": 0.06,
+   "asphalt": 0.1,
+   "pad": 0.11,
+   "marking": 0.13,
+   "rail": 0.1
+  },
+  "polygonOffset": {
+   "terrain": [
+    1,
+    1
+   ],
+   "sidewalk": [
+    -1,
+    -2
+   ],
+   "asphalt": [
+    -2,
+    -4
+   ],
+   "marking": [
+    -3,
+    -8
+   ]
+  },
+  "renderOrder": {
+   "terrain": 0,
+   "water": 1,
+   "sidewalk": 2,
+   "asphalt": 3,
+   "marking": 4,
+   "props": 5
+  }
+ },
+ "SIGNAL": {
+  "red": 16726831,
+  "yellow": 16761157,
+  "green": 3530874,
+  "off": 2501171,
+  "housing": 2830149,
+  "pole": 4869975,
+  "visor": 1842986,
+  "backplate": 16775406,
+  "poleH": 3,
+  "poleR": 0.07,
+  "headW": 0.34,
+  "headH": 0.95,
+  "headD": 0.26,
+  "lampR": 0.1,
+  "lampStep": 0.3,
+  "back": 1.5,
+  "side": 0.6,
+  "lodDist": 420,
+  "lodFadeFrom": 340,
+  "maxPerFrame": 1200,
+  "phase": {
+   "green": 18,
+   "yellow": 3,
+   "allRed": 1
+  }
+ },
+ "THEMES": {
+  "base": {
+   "label": "Базовая «Пастила»"
+  },
+  "lateSng": {
+   "label": "Позднее СНГ",
+   "panels": [
+    15326404,
+    13226972,
+    15257486,
+    14276044,
+    15787734,
+    12570840
+   ],
+   "seams": [
+    13785930,
+    4161471,
+    5216874,
+    14721072,
+    9406136,
+    13157046
+   ],
+   "roof": 5593194,
+   "parapet": 12104360,
+   "plinth": 9078144,
+   "glass": 8297144,
+   "frame": 16052714,
+   "loggiaGlaze": [
+    12572900,
+    14083792,
+    15261896,
+    16052714
+   ],
+   "door": 6967360,
+   "canopy": 13617340,
+   "shopGlass": 7317704,
+   "sign": [
+    14172207,
+    2064319,
+    3119706
+   ]
+  },
+  "russianClassic": {
+   "label": "Российская классика",
+   "walls": [
+    15251546,
+    13133898,
+    15917728,
+    14215372,
+    15517858,
+    11882559,
+    15782576
+   ],
+   "trim": 16775406,
+   "roofs": [
+    6262634,
+    9081500,
+    5208666,
+    10504762,
+    8029584
+   ],
+   "plinth": 11049610,
+   "glass": 6257302,
+   "door": 5913134,
+   "gate": 2830149,
+   "dome": 6262634
+  },
+  "french": {
+   "label": "Париж (Осман)",
+   "stone": [
+    15853263,
+    15391936,
+    16116954,
+    15128248
+   ],
+   "zinc": 8358550,
+   "zincDark": 6253174,
+   "iron": 2830149,
+   "awnings": [
+    11874362,
+    2056010,
+    2834282,
+    15122762,
+    9056074
+   ],
+   "chimney": 13208170,
+   "pot": 11886655,
+   "glass": 7178920,
+   "shop": [
+    2047818,
+    5909034,
+    2830149,
+    4151866
+   ]
+  },
+  "details": {
+   "downpipe": 9081500,
+   "ac": 15659250,
+   "acGrille": 10134190,
+   "vent": 12103864,
+   "antenna": 6975616,
+   "dish": 16053488,
+   "fireEscape": 3817306
+  }
+ },
+ "NIGHT": {
+  "scene": {
+   "zenith": 461604,
+   "horizon": 2042460,
+   "fog": 1317440,
+   "hemiSky": 5925560,
+   "hemiGround": 2761800,
+   "hemiI": 0.75,
+   "moon": 11188479,
+   "moonI": 0.4,
+   "exposure": 1.05,
+   "groundLift": 0.1,
+   "farHemi": 0.3,
+   "farFrom": 350,
+   "farTo": 1600
+  },
+  "lamp": {
+   "sodium": 16757850,
+   "led": 16773590,
+   "cold": 13623551,
+   "pool": 16761466,
+   "head": 16774876,
+   "tail": 16722490,
+   "brake": 16715808,
+   "window": 16763000,
+   "windowCold": 12572927,
+   "neon": [
+    6283464,
+    16736162,
+    9403391,
+    16761157
+   ]
+  },
+  "intensity": {
+   "lampHead": 6,
+   "pool": 0.42,
+   "cone": 0.1,
+   "carHead": 5,
+   "carTail": 3.2,
+   "window": 1.5,
+   "highwayNeon": 2.4,
+   "spaceDot": 2.2
+  },
+  "bloom": {
+   "strength": 0.85,
+   "radius": 0.55,
+   "threshold": 0.82,
+   "farStrength": 0.95
+  },
+  "vision": {
+   "base": 791592,
+   "baseHi": 2767452,
+   "buildings": 1713216,
+   "buildingsEdge": 3824266,
+   "water": 401978,
+   "grid": 2771562,
+   "traffic": [
+    3139232,
+    10481754,
+    16769354,
+    16747068,
+    16723802
+   ],
+   "zones": {
+    "R": 4186250,
+    "C": 5220607,
+    "I": 16761157,
+    "O": 12614655
+   },
+   "heat": [
+    1056842,
+    3104720,
+    3133664,
+    11599722,
+    16773242
+   ]
+  },
+  "build": {
+   "cursor": 8384728,
+   "cursorBad": 16734826,
+   "grid": 8384728,
+   "gridAlpha": 0.22,
+   "ghost": 10483944,
+   "ghostAlpha": 0.45
+  }
+ },
+ "MUTE": {
+  "satK": 0.55,
+  "satMax": 0.3,
+  "lMin": 0.3,
+  "lMax": 0.9,
+  "warmHue": 35,
+  "warmPull": 0.15
+ },
+ "BUILD_MUTED": {
+  "resWalls": [
+   15591134,
+   15129553,
+   15327957,
+   15264733,
+   15589854,
+   14740459,
+   15458535,
+   15526108
+  ],
+  "resRoofs": [
+   11566444,
+   10119002,
+   4488806,
+   6842243,
+   8349034,
+   11899509
+  ],
+  "midWalls": [
+   15064016,
+   14933717,
+   14344928,
+   14865610,
+   14998501,
+   14015699
+  ],
+  "towerWalls": [
+   15394529,
+   14805738,
+   15327722,
+   14477281,
+   15590621
+  ],
+  "glass": 10932174,
+  "glassDark": 4735830,
+  "windowWarm": 13680551,
+  "windowDay": 8683950,
+  "comWalls": [
+   15591390,
+   15591390,
+   14675180,
+   15590878
+  ],
+  "comAccent": [
+   12951699,
+   4488806,
+   12495750,
+   10651839,
+   12156294
+  ],
+  "indWalls": [
+   13618633,
+   12894912,
+   13814722,
+   12765641
+  ],
+  "indRoof": [
+   9539483,
+   8486795,
+   9801867
+  ],
+  "indAccent": 12495750,
+  "chimney": 11369836,
+  "civicWalls": [
+   15591390,
+   15591646
+  ],
+  "civicRoof": 4488806,
+  "civicAccent": 12495750,
+  "stationWalls": 14668739,
+  "stationRoof": 4488806,
+  "depotWalls": 14077118,
+  "trim": 15591390,
+  "door": 8151896,
+  "concrete": 14473426,
+  "rooftop": 11973301,
+  "plinth": 11774886
+ },
+ "THEMES_MUTED": {
+  "base": {
+   "label": "Базовая «Пастила»"
+  },
+  "lateSng": {
+   "label": "Позднее СНГ",
+   "panels": [
+    14801356,
+    13490136,
+    13616039,
+    14079183,
+    15394268,
+    12964561
+   ],
+   "seams": [
+    11565420,
+    6069922,
+    6326628,
+    11309412,
+    10523053,
+    12894650
+   ],
+   "roof": 6117989,
+   "parapet": 11841964,
+   "plinth": 8947074,
+   "glass": 9152683,
+   "frame": 15394785,
+   "loggiaGlaze": [
+    13098202,
+    14344661,
+    14802127,
+    15394785
+   ],
+   "door": 6378313,
+   "canopy": 13354944,
+   "shopGlass": 8631473,
+   "sign": [
+    11103070,
+    5148815,
+    4686415
+   ]
+  },
+  "russianClassic": {
+   "label": "Российская классика",
+   "walls": [
+    12429701,
+    11303526,
+    14275257,
+    14410450,
+    14207158,
+    10119002,
+    14602690
+   ],
+   "trim": 15591390,
+   "roofs": [
+    6980714,
+    9344920,
+    5861465,
+    9002321,
+    8358539
+   ],
+   "plinth": 10590865,
+   "glass": 7047306,
+   "door": 5916735,
+   "gate": 4735830,
+   "dome": 6980714
+  },
+  "french": {
+   "label": "Париж (Осман)",
+   "stone": [
+    15328215,
+    14801353,
+    15591646,
+    14472130
+   ],
+   "zinc": 8687761,
+   "zincDark": 6582385,
+   "iron": 4735830,
+   "awnings": [
+    9785936,
+    3629638,
+    4143966,
+    12035961,
+    7750476
+   ],
+   "chimney": 11834239,
+   "pot": 10121050,
+   "glass": 8034459,
+   "shop": [
+    3890777,
+    6045757,
+    4735830,
+    4871747
+   ]
+  },
+  "details": {
+   "downpipe": 9344920,
+   "ac": 15001575,
+   "acGrille": 10460842,
+   "vent": 11973301,
+   "antenna": 7434107,
+   "dish": 15263715,
+   "fireEscape": 4735830
+  }
+ },
+ "GROUND_V5": {
+  "grass": 9348458,
+  "grassDry": 10726776,
+  "meadow": 9809006,
+  "forestFloor": 7308376,
+  "yardGrass": 10268284,
+  "bladeBase": 7178830,
+  "bladeTip": 11846794,
+  "bush": [
+   6257996,
+   7244373,
+   8163162
+  ]
+ }
 }

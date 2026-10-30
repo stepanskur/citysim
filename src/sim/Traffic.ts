@@ -1,5 +1,5 @@
 import { World } from '../world/World';
-import { ROAD_TYPES } from '../world/RoadNet';
+import { ROAD_TYPES, MOD } from '../world/RoadNet';
 import { MinHeap, mulberry32 } from '../util';
 import { BALANCE } from './balance';
 
@@ -62,7 +62,7 @@ export class Traffic {
       const nu = N[u];
       for (const e of nu.edges) {
         const E = net.edges[e]; if (!E.alive || !((1 << E.type) & typeMask)) continue;
-        const dir = E.a === u ? 0 : 1; const v = dir ? E.a : E.b; const l = e * 2 + dir;
+        const dir = E.a === u ? 0 : 1; if (dir && ((E.m || 0) & MOD.ONEWAY)) continue; const v = dir ? E.a : E.b; const l = e * 2 + dir;
         const c = this.g[u] + this.laneCost(l) + (nu.edges.length > 2 ? 3 : 0);
         if (this.stamp[v] !== sv || c < this.g[v]) { this.stamp[v] = sv; this.g[v] = c; this.from[v] = l; const nv = N[v]; h.push(v, c + Math.hypot(nv.x - T.x, nv.z - T.z) / 30); }
       }
@@ -115,13 +115,38 @@ export class Traffic {
     if (arrived) { const s = this.stats; s.trips++; s.tripTime += v.t; s.freeTime += v.free; if (v.city >= 0) { s.cityTrips[v.city] += v.w; s.cityTime[v.city] += v.t * v.w; s.cityFree[v.city] += v.free * v.w; } this.onArrive?.(v); }
     else this.stats.despawned++;
   }
+  /** C (17 §1): режим узла. Авто: проспект × проспект и Y-развилка проспектов 30–60° (17 §5.1) — светофор; улицы — приоритет; переулки и узлы шоссе — без регулирования */
+  modeCache = new Int8Array(0); modeVer = -1;
+  nodeMode(node: number): number {
+    const net = this.world.net; if (this.modeVer !== net.version || this.modeCache.length < net.nodes.length) { this.modeCache = new Int8Array(net.nodes.length * 2).fill(-1); this.modeVer = net.version; }
+    const c = this.modeCache[node]; if (c >= 0) return c; const N0 = net.nodes[node]; let m = 3;
+    if (N0.ctl) m = N0.ctl; else {
+      const arms: { t: number; a: number }[] = []; for (const e of N0.edges) { const E = net.edges[e]; if (!E.alive) continue; const o = net.nodes[E.a === node ? E.b : E.a]; arms.push({ t: E.type, a: Math.atan2(o.z - N0.z, o.x - N0.x) }); }
+      if (arms.length >= 3 && !arms.some(a => a.t === 2)) {
+        const av = arms.filter(a => a.t === 1).length; const TC = BALANCE.trafficControl;
+        let yfork = false; if (av >= 2 && arms.length === 3) for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) { let d = Math.abs(arms[i].a - arms[j].a) * 180 / Math.PI; if (d > 180) d = 360 - d; if (d >= TC.yForkDeg[0] && d <= TC.yForkDeg[1]) yfork = true; }
+        m = av >= 2 || yfork ? 1 : arms.some(a => a.t <= 1) ? 2 : 3;
+      }
+    }
+    this.modeCache[node] = m; return m;
+  }
+  rank(t: number) { return [1, 2, 3, 0][t]; }
   green(node: number, edge: number): boolean {
     const net = this.world.net; const N0 = net.nodes[node]; if (N0.edges.length < 3) return true;
-    const E = net.edges[edge]; const o = net.nodes[E.a === node ? E.b : E.a];
+    const mode = this.nodeMode(node); if (mode === 3) return true;
+    const E = net.edges[edge];
+    if (mode === 2) { // приоритет: главная (старший класс) едет, второстепенная ждёт разрыва в потоке главной
+      let top = 0; for (const e of N0.edges) { const X = net.edges[e]; if (X.alive) top = Math.max(top, this.rank(X.type)); }
+      if (this.rank(E.type) >= top) return true;
+      const gap = BALANCE.trafficControl.priorityGapM;
+      for (const e of N0.edges) { const X = net.edges[e]; if (!X.alive || e === edge || this.rank(X.type) < top) continue; const l = e * 2 + (X.b === node ? 0 : 1); const arr = this.lanes[l]; if (arr && arr.length) { const v = this.vehs[arr[0]]; if (X.len - v.s < gap && v.v > 1) return false; } }
+      return true;
+    }
+    const o = net.nodes[E.a === node ? E.b : E.a];
     const e0 = net.edges[N0.edges[0]]; const o0 = net.nodes[e0.a === node ? e0.b : e0.a];
     const base = Math.atan2(o0.z - N0.z, o0.x - N0.x); const ang = Math.atan2(o.z - N0.z, o.x - N0.x);
     let rel = ((ang - base) % Math.PI + Math.PI * 2) % Math.PI; const grp = rel < Math.PI / 4 || rel > Math.PI * 3 / 4 ? 0 : 1;
-    const cyc = 24; const ph = Math.floor((this.time + (node * 7.31) % cyc) / (cyc / 2)) % 2;
+    const cyc = BALANCE.trafficControl.simCycle; const ph = Math.floor((this.time + (node * 7.31) % cyc) / (cyc / 2)) % 2;
     return ph === grp;
   }
   step(dt: number) {

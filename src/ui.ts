@@ -1,5 +1,5 @@
 import { schedule } from './sim/LineLoad';
-import { MOD, LEVEL_NAMES } from './world/RoadNet';
+import { MOD, levelName } from './world/RoadNet';
 import * as THREE from 'three';
 import type { Game } from './game';
 import { SPEEDS } from './game';
@@ -24,6 +24,7 @@ const TOOLS: { id: ToolId; name: string; key: string; icon: string; subs?: strin
   { id: 'place', name: 'Здания', key: '7', icon: 'build', subs: PLACEABLES.map(p => `${p.name} (${fmtMoney(p.cost)})`) },
   { id: 'line', name: 'Линии транспорта', key: '8', icon: 'bus', subs: LINE_TYPES.map(t => t.name) },
   { id: 'rail', name: 'Пути (ж/д, трамвай, метро)', key: '9', icon: 'rail', subs: ['Ж/д', 'Трамвай', 'Метро'] },
+  { id: 'traffic', name: 'Управление движением', key: '0', icon: 'road', subs: ['Авто', 'Светофор', 'Приоритет', 'Без регулирования', 'Одностороннее ⇄'] },
 ];
 const PANEL_IC: Record<string, string> = { eco: 'coin', transport: 'bus', cities: 'build', region: 'zone', charts: 'chart', settings: 'cog', save: 'sparkle', help: 'smile', engage: 'bell', routes: 'rail' };
 const OV_SW: Record<string, string> = { none: '#b8b6d4', traffic: 'linear-gradient(90deg,#3cb043,#f2c230,#e04848)', land: 'linear-gradient(90deg,#ff7a6a,#5fe09a)', pollution: 'linear-gradient(90deg,#5fe09a,#ff7a6a)', transit: '#5fe0c8', resources: '#ffc145', zones: 'linear-gradient(90deg,#5fe09a,#7aaaff,#ffc145)', territory: 'linear-gradient(90deg,#7aaaff,#ff7a59)' };
@@ -87,20 +88,21 @@ export class UI {
   setSpeed(i: number) { this.g.speed = i; this.top.querySelectorAll('#speeds button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === i))); }
   setOverlay(o: Overlay) {
     this.g.r.overlay = o; this.layers.querySelectorAll('[data-o]').forEach(r => r.classList.toggle('cs-chip--on', (r as HTMLElement).dataset.o === o)); (this.top.querySelector('#layers-btn') as HTMLElement).setAttribute('aria-pressed', String(o !== 'none')); this.g.r.refreshAll();
-    const L: Record<string, string> = { traffic: '🟩 свободно → 🟨 → 🟥 пробка', land: '🟥 дешёвая → 🟩 дорогая земля', pollution: '🟩 чисто → 🟥 грязно', transit: 'голубой — зона пешей доступности остановок', resources: '🌲 лес · 🟫 руда · ⬛ нефть · 🟨 плодородная', zones: '🟩 жилая · 🟦 коммерческая · 🟨 промышленная', territory: '🟦 ваши подрегионы · 🟧 соседи (ИИ) · без цвета — свободные' };
+    const L: Record<string, string> = { traffic: 'Неон загрузки: зелёный — свободно → жёлтый → красный — пробка', land: '🟥 дешёвая → 🟩 дорогая земля', pollution: '🟩 чисто → 🟥 грязно', transit: 'голубой — зона пешей доступности остановок', resources: '🌲 лес · 🟫 руда · ⬛ нефть · 🟨 плодородная', zones: '🟩 жилая · 🟦 коммерческая · 🟨 промышленная', territory: '🟦 ваши подрегионы · 🟧 соседи (ИИ) · без цвета — свободные' };
     this.legend.style.display = o === 'none' ? 'none' : 'block'; this.legend.textContent = L[o] || '';
   }
   refreshTools() {
     const g = this.g; this.toolsEl.querySelectorAll('button[data-t]').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.t === g.tools.tool)));
     const t = TOOLS.find(t => t.id === g.tools.tool)!;
     if (!t.subs) { this.sub.hidden = true; return; }
-    const tips: Record<string, string> = { road: 'Клик — начало, клик — конец (цепочка продолжается). Ctrl — шаг угла 15°. Esc/ПКМ — отмена. Над водой — мост. L — уровень (земля/эстакада/тоннель): разные уровни пересекаются без перекрёстка.', curve: 'Клик: начало → контрольная точка → конец.', zone: 'Протяните прямоугольник. Зонируются только участки у дорог.', terrain: 'Удерживайте ЛКМ. «Выровнять» — к высоте точки нажатия.', place: 'Клик по участку у дороги.', line: 'Кликайте остановки. Enter или двойной клик — открыть линию. Трамвай/метро/поезд — только по путям.', rail: 'Клик — начало, клик — конец (цепочка). L — уровень; метро по умолчанию в тоннеле. U — режим метро (рентген).' };
+    const tips: Record<string, string> = { road: 'Клик — начало, клик — конец (цепочка продолжается). Ctrl — шаг угла 15°. Esc/ПКМ — отмена. Над водой — мост. L, PageUp/PageDown, +/− — уровень (тоннель 3…эстакада 4, шаг 8 м); дорога в уровне земли выравнивает рельеф (насыпь/выемка до 6 м); привязка к любой точке дороги; здания под сносом — красным с ценой: разные уровни пересекаются без перекрёстка.', curve: 'Клик: начало → контрольная точка → конец.', zone: 'Протяните прямоугольник. Зонируются только участки у дорог.', terrain: 'Удерживайте ЛКМ. «Выровнять» — к высоте точки нажатия.', place: 'Клик по участку у дороги.', line: 'Кликайте остановки. Enter или двойной клик — открыть линию. Трамвай/метро/поезд — только по путям.', rail: 'Клик — начало, клик — конец (цепочка). L — уровень; метро по умолчанию в тоннеле. U — режим метро (рентген).' };
     this.sub.hidden = false; this.sub.innerHTML = `<div class="cs-seg">${t.subs.map((s, i) => `<button aria-pressed="${i === g.tools.sub}" data-i="${i}">${s}</button>`).join('')}</div><div class="tip2">${tips[t.id] || ''} <span class="cs-kbd">Tab</span> — следующий</div>`;
     this.sub.querySelectorAll('button[data-i]').forEach(b => (b as HTMLElement).onclick = () => g.tools.set(t.id, +(b as HTMLElement).dataset.i!));
     if (t.id === 'road' || t.id === 'curve' || t.id === 'rail') { // этап C: уровень (L) и модули профиля
-      const T = g.tools; const row = h(`<div class="cs-subrow"><span class="cs-sublbl">Уровень <span class="cs-kbd">L</span></span><div class="cs-seg">${[-1, 0, 1].map(v => `<button data-lv="${v}" aria-pressed="${T.lv === v}">${LEVEL_NAMES[v + 1]}</button>`).join('')}</div><span class="cs-sublbl">Модули</span><div class="cs-seg"><button data-m="${MOD.TRAM}" aria-pressed="${!!(T.mods & MOD.TRAM)}" data-tip="Трамвайные пути в полосе (общий граф с рельсовой сетью)">Трамвай</button><button data-m="${MOD.BUS}" aria-pressed="${!!(T.mods & MOD.BUS)}" data-tip="Выделенная полоса для автобусов: без пробок для линий">Автобусная полоса</button></div></div>`);
+      const T = g.tools; const row = h(`<div class="cs-subrow"><span class="cs-sublbl">Уровень <span class="cs-kbd">L</span></span><div class="cs-seg"><button data-dl="-1" data-tip="Ниже (PageDown / −)">−</button><button aria-pressed="true" style="min-width:92px">${levelName(T.lv)}</button><button data-dl="1" data-tip="Выше (PageUp / +)">+</button></div><span class="cs-sublbl">Модули</span><div class="cs-seg"><button data-m="${MOD.TRAM}" aria-pressed="${!!(T.mods & MOD.TRAM)}" data-tip="Трамвайные пути в полосе (общий граф с рельсовой сетью)">Трамвай</button><button data-m="${MOD.BUS}" aria-pressed="${!!(T.mods & MOD.BUS)}" data-tip="Выделенная полоса для автобусов: без пробок для линий">Автобусная полоса</button><button data-m="${MOD.ONEWAY}" aria-pressed="${!!(T.mods & MOD.ONEWAY)}" data-tip="Одностороннее движение по направлению прокладки; с «Переулком» — однополосная дорога-отвод (B2)">Одностороннее</button></div></div>`);
       this.sub.insertBefore(row, this.sub.querySelector('.tip2'));
-      row.querySelectorAll('button[data-lv]').forEach(b => (b as HTMLElement).onclick = () => { T.lv = +(b as HTMLElement).dataset.lv!; this.refreshTools(); });
+      if (t.id === 'rail') { row.querySelectorAll('.cs-sublbl')[1]?.remove(); row.querySelectorAll('.cs-seg')[1]?.remove(); } // QA2 п.8: модули дороги у путей не нужны — подпанель ниже
+      row.querySelectorAll('button[data-dl]').forEach(b => (b as HTMLElement).onclick = () => T.stepLv(+(b as HTMLElement).dataset.dl!));
       row.querySelectorAll('button[data-m]').forEach(b => (b as HTMLElement).onclick = () => { T.mods ^= +(b as HTMLElement).dataset.m!; this.refreshTools(); });
     }
   }
